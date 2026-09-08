@@ -97,16 +97,41 @@ public partial class MainWindow : Window
             Topmost = true;
         }
 
+        // 診斷開關：定位崩潰發生在哪一步
+        var noBrowser = Environment.GetEnvironmentVariable("BYOD_NO_BROWSER") == "1";
+        var oneBrowser = Environment.GetEnvironmentVariable("BYOD_ONE_BROWSER") == "1";
+
+        if (noBrowser)
+        {
+            Console.WriteLine("[BYOD] NO_BROWSER：不建立任何瀏覽器（只開殼視窗）。");
+            StatusText.Text = "診斷模式：未載入瀏覽器。";
+            return;
+        }
+
         // 左：評測網站
+        Console.WriteLine("[BYOD] 步驟1：建立 judge 瀏覽器…");
         _judgeBrowser = CreateBrowser();
+        Console.WriteLine("[BYOD] 步驟2：設定 judge Address…");
         _judgeBrowser.Address = JudgeStartUrl;
         JudgeHost.Child = _judgeBrowser;
+        Console.WriteLine("[BYOD] 步驟3：judge 瀏覽器已就緒。");
+
+        if (oneBrowser)
+        {
+            Console.WriteLine("[BYOD] ONE_BROWSER：略過編輯器。");
+            StatusText.Text = "診斷模式：僅載入評測站。";
+            return;
+        }
 
         // 右：本地 Monaco 編輯器（掛 JS 橋接 + 本地 app:// 資源）
+        Console.WriteLine("[BYOD] 步驟4：建立 editor 瀏覽器…");
         _editorBrowser = CreateBrowser();
+        Console.WriteLine("[BYOD] 步驟5：註冊 JS 橋接…");
         _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge");
+        Console.WriteLine("[BYOD] 步驟6：設定 editor Address（app://）…");
         _editorBrowser.Address = LocalAssetSchemeHandlerFactory.EditorStartUrl;
         EditorHost.Child = _editorBrowser;
+        Console.WriteLine("[BYOD] 步驟7：editor 瀏覽器已就緒。");
 
         _detector.Record(CheatingEventType.Info, "防弊瀏覽器已啟動。");
         StatusText.Text = "安全環境已就緒 — 僅允許造訪指定評測網域。";
