@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
@@ -83,6 +84,42 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Linux 後備方案：GNOME Wayland 不接受 FullScreen，改以螢幕尺寸手動鋪滿並置頂。
+    /// 可用環境變數 BYOD_SIZE=WxH（例 1920x1080）覆寫尺寸。
+    /// </summary>
+    private void ApplyKioskSizeLinux()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        double w = 1920, h = 1080;
+        var pos = new PixelPoint(0, 0);
+        if (screen != null)
+        {
+            var scaling = screen.Scaling <= 0 ? 1 : screen.Scaling;
+            w = screen.Bounds.Width / scaling;
+            h = screen.Bounds.Height / scaling;
+            pos = screen.Bounds.Position;
+        }
+
+        var sizeEnv = Environment.GetEnvironmentVariable("BYOD_SIZE");
+        if (!string.IsNullOrWhiteSpace(sizeEnv) && sizeEnv.Contains('x'))
+        {
+            var parts = sizeEnv.Split('x');
+            if (double.TryParse(parts[0], out var ew) && double.TryParse(parts[1], out var eh))
+            {
+                w = ew;
+                h = eh;
+            }
+        }
+
+        WindowState = WindowState.Normal;
+        Position = pos;
+        Width = w;
+        Height = h;
+        Topmost = true;
+        Console.WriteLine($"[BYOD] Linux 手動鋪滿。bounds={Bounds} target={w}x{h} pos={pos}");
+    }
+
     private void OnOpened(object? sender, EventArgs e)
     {
         Console.WriteLine($"[BYOD] Window Opened. windowed={_windowed} " +
@@ -90,15 +127,10 @@ public partial class MainWindow : Window
             $"WAYLAND_DISPLAY={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")} " +
             $"bounds={Bounds}");
 
-        if (!_windowed)
+        if (!_windowed && OperatingSystem.IsLinux())
         {
-            // 版面完成後再次套用全螢幕（GNOME Wayland/部分 WM 需顯示後才生效）
-            Dispatcher.UIThread.Post(() =>
-            {
-                WindowState = WindowState.FullScreen;
-                Topmost = true;
-                Console.WriteLine($"[BYOD] 重新套用全螢幕。bounds={Bounds} state={WindowState}");
-            }, DispatcherPriority.Background);
+            // GNOME Wayland 忽略 FullScreen；版面完成後以螢幕尺寸手動鋪滿
+            Dispatcher.UIThread.Post(ApplyKioskSizeLinux, DispatcherPriority.Background);
         }
 
         // 診斷開關：定位崩潰發生在哪一步
