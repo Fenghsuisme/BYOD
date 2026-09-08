@@ -29,6 +29,9 @@ public partial class MainWindow : Window
     private bool _proctorExit;
     private bool _logExported;
 
+    // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
+    private readonly bool _windowed = Environment.GetEnvironmentVariable("BYOD_WINDOWED") == "1";
+
     // 稽核日誌路徑（保留於執行檔旁 logs 資料夾）
     private readonly string _liveLogPath;
     private readonly string _exportLogPath;
@@ -53,12 +56,47 @@ public partial class MainWindow : Window
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
+
+        ConfigureWindowChrome();
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 
+    /// <summary>依模式設定視窗外觀：Kiosk（全螢幕）或診斷用一般視窗。</summary>
+    private void ConfigureWindowChrome()
+    {
+        if (_windowed)
+        {
+            SystemDecorations = SystemDecorations.Full;
+            Topmost = false;
+            CanResize = true;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            Width = 1280;
+            Height = 800;
+            WindowState = WindowState.Normal;
+        }
+        else
+        {
+            // Kiosk：無邊框、不可調整；全螢幕/置頂在視窗顯示後才套用（相容性較佳）
+            SystemDecorations = SystemDecorations.None;
+            CanResize = false;
+        }
+    }
+
     private void OnOpened(object? sender, EventArgs e)
     {
+        Console.WriteLine($"[BYOD] Window Opened. windowed={_windowed} " +
+            $"DISPLAY={Environment.GetEnvironmentVariable("DISPLAY")} " +
+            $"WAYLAND_DISPLAY={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")} " +
+            $"bounds={Bounds}");
+
+        if (!_windowed)
+        {
+            // 先顯示再切全螢幕，較能被各視窗管理員接受
+            WindowState = WindowState.FullScreen;
+            Topmost = true;
+        }
+
         // 左：評測網站
         _judgeBrowser = CreateBrowser();
         _judgeBrowser.Address = JudgeStartUrl;
