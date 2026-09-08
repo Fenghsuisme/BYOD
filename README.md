@@ -71,6 +71,23 @@ dotnet publish App/ByodKioskBrowser.App.csproj -c Release -r linux-x64 --self-co
 
 > CI（GitHub Actions）已自動為 Windows / Linux 各產出成品，可從 Actions → Artifacts 下載。
 
+### 在 Linux 上執行（重要）
+
+CEF/Chromium 在 Linux 需要系統函式庫，且以免 root 的 `NoSandbox` 模式執行。
+**最簡單的方式**：直接下載 CI 的 `ByodKioskBrowser-linux-x64` 成品（已含 Monaco），然後：
+
+```bash
+# 1) 安裝 CEF 執行期依賴（apt / dnf / pacman 皆支援）
+sudo ./Scripts/install-linux-deps.sh
+
+# 2) 進入成品資料夾並啟動（把 run-linux.sh 一併放進去）
+./run-linux.sh            # 或 BYOD_DEBUG=1 ./run-linux.sh 觀看除錯輸出
+```
+
+- **Wayland**：`run-linux.sh` 會自動改走 XWayland（`GDK_BACKEND=x11`）以取得較佳相容性。
+- 若啟動即崩潰，多半是**缺系統庫**；用 `BYOD_DEBUG=1 ./run-linux.sh` 看缺哪個 `.so`，再補裝。
+- 若要自行在 Linux 建置（而非用 CI 成品），需先裝 .NET 8 SDK 與 PowerShell（`pwsh`）跑 `fetch-monaco.ps1`。
+
 ## 在 macOS 上開發
 
 macOS（Apple Silicon）可**直接編譯並執行**用於開發（csproj 依主機 OS 自動選用 `CefGlue.Avalonia.ARM64`）：

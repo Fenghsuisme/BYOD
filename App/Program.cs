@@ -50,7 +50,10 @@ internal static class Program
                 // 使用視窗化渲染（效能較佳、相容性較好）
                 WindowlessRenderingEnabled = false,
                 // 不持久化任何工作階段資料
-                PersistSessionCookies = false
+                PersistSessionCookies = false,
+                // Linux 免 root 設定 chrome-sandbox 的必要條件（可攜綠色程式標準做法）。
+                // 本 App 僅載入受控評測網域，關閉 renderer sandbox 對防弊無實質影響。
+                NoSandbox = true
             },
             customSchemes: new[]
             {
