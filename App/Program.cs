@@ -36,11 +36,25 @@ internal static class Program
     }
 
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
+    {
+        var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
             .LogToTrace()
             .AfterSetup(_ => InitializeCef());
+
+        // Linux 於虛擬機 / 無獨立 GPU 環境，Avalonia 以 OpenGL 合成常導致 segfault。
+        // 預設改用軟體渲染（kiosk 不需 GPU 效能）；設 BYOD_GPU=1 可在真實硬體上改回 GPU。
+        if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("BYOD_GPU") != "1")
+        {
+            builder = builder.With(new X11PlatformOptions
+            {
+                RenderingMode = new[] { X11RenderingMode.Software }
+            });
+        }
+
+        return builder;
+    }
 
     private static void InitializeCef()
     {
