@@ -1,0 +1,73 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ByodKioskBrowser.MainWindow"
+        Title="BYOD 競賽防弊瀏覽器"
+        WindowState="FullScreen"
+        SystemDecorations="None"
+        Topmost="True"
+        CanResize="False"
+        Background="#1E1E1E">
+
+    <Panel>
+        <!-- 主體：狀態列 + 左右分割 -->
+        <Grid RowDefinitions="34,*">
+
+            <!-- 頂部狀態列 -->
+            <Border Grid.Row="0" Background="#2D2D30">
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0">
+                    <TextBlock Grid.Column="0"
+                               Text="BYOD 競賽防弊模式"
+                               FontWeight="SemiBold"
+                               Foreground="#DDDDDD"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1"
+                               x:Name="StatusText"
+                               Text="正在初始化安全環境…"
+                               Foreground="#9CDCFE"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="失焦次數：" Foreground="#DDDDDD" VerticalAlignment="Center" />
+                        <TextBlock x:Name="DeactivationCountText"
+                                   Text="0"
+                                   Foreground="#F48771"
+                                   FontWeight="Bold"
+                                   MinWidth="24"
+                                   TextAlignment="Right"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 左 評測網站 / 右 本地 Monaco 編輯器 -->
+            <Grid Grid.Row="1" ColumnDefinitions="3*,4,2*">
+                <Border Grid.Column="0" x:Name="JudgeHost" />
+                <GridSplitter Grid.Column="1" Background="#3E3E42" />
+                <Border Grid.Column="2" x:Name="EditorHost" />
+            </Grid>
+        </Grid>
+
+        <!-- 失焦防弊警示遮罩：預設隱藏 -->
+        <Border x:Name="WarningOverlay"
+                IsVisible="False"
+                Background="#CC7A0000">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Text="⚠ 偵測到視窗失去焦點"
+                           Foreground="White"
+                           FontSize="34"
+                           FontWeight="Bold"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="請立即返回本應用程式。切換至其他程式的行為已被記錄。"
+                           Foreground="#FFECEC"
+                           FontSize="18"
+                           Margin="0,16,0,0"
+                           HorizontalAlignment="Center" />
+                <TextBlock x:Name="OverlayCountText"
+                           Foreground="#FFD5D5"
+                           FontSize="16"
+                           Margin="0,24,0,0"
+                           HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Panel>
+</Window>

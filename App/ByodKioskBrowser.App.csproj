@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ByodKioskBrowser</RootNamespace>
+    <AssemblyName>ByodKioskBrowser</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- 本機僅有 .NET 9 runtime 時仍可執行 -->
+    <RollForward>Major</RollForward>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationIcon />
+    <!--
+      CEF 原生二進位為 x64；考試機（Windows/Linux）皆以 x64 部署。
+      arm64 需改用 CefGlue.Avalonia.ARM64 套件（見 README）。
+    -->
+    <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.0.9" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.0.9" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.0.9" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.0.9" />
+    <!--
+      跨平台 Chromium 瀏覽器核心（CEF）。
+      依「建置主機」的 OS 選擇對應的原生套件：
+      - Windows / Linux（CI 與考試機部署）→ x64 套件
+      - macOS（開發機，通常為 Apple Silicon）→ ARM64 套件，可在 Mac 直接執行驗證
+      若需在 Windows/Linux 部署 ARM64，改用對應的 .ARM64 套件即可。
+    -->
+    <PackageReference Include="CefGlue.Avalonia" Version="120.6099.211"
+                      Condition="!$([MSBuild]::IsOSPlatform('OSX'))" />
+    <PackageReference Include="CefGlue.Avalonia.ARM64" Version="120.6099.211"
+                      Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\ByodKioskBrowser.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 本地 Monaco 網頁資源：複製到輸出目錄，由自訂 app:// scheme 從磁碟提供 -->
+  <ItemGroup>
+    <Content Include="Assets\webapp\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

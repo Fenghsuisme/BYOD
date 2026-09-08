@@ -16,7 +16,6 @@ public class UrlWhitelistValidatorTests
     [InlineData("https://cdnjs.cloudflare.com/ajax/libs/x")]
     [InlineData("https://fonts.googleapis.com/css2")]
     [InlineData("https://fonts.gstatic.com/s/font.woff2")]
-    [InlineData("https://appassets.local/index.html")]  // 本地 Monaco
     public void IsAllowed_WhitelistedHttpsUris_ReturnsTrue(string uri)
     {
         Assert.True(_validator.IsAllowed(uri));

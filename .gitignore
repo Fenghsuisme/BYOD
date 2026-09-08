@@ -11,8 +11,8 @@ out/
 logs/
 
 # Monaco 本地資源（由 Scripts/fetch-monaco.ps1 取得，體積大不進版控）
-Assets/webapp/vs/*
-!Assets/webapp/vs/PLACE_MONACO_HERE.md
+App/Assets/webapp/vs/*
+!App/Assets/webapp/vs/PLACE_MONACO_HERE.md
 
 # IDE
 .vs/

@@ -6,15 +6,13 @@ using ByodKioskBrowser.Interfaces;
 namespace ByodKioskBrowser.Services;
 
 /// <summary>
-/// 以主機名稱為基準的導航白名單。
+/// 以主機名稱為基準的導航白名單（僅適用於 https 遠端網域）。
 /// 允許條件：host 完全等於清單項目，或為清單項目的子網域（host 以 ".&lt;entry&gt;" 結尾）。
-/// 比對時忽略大小寫，且僅接受 https（本地 appassets 亦走 https）。
+/// 比對時忽略大小寫，且僅接受 https。
+/// 本地 Monaco 資源改由 app:// scheme 提供，於瀏覽器 handler 層直接放行，不經此驗證器。
 /// </summary>
 public sealed class UrlWhitelistValidator : IUrlWhitelistValidator
 {
-    // 本地 Monaco 靜態資源的虛擬主機（SetVirtualHostNameToFolderMapping 掛載）。
-    public const string LocalAppHost = "appassets.local";
-
     private readonly HashSet<string> _allowedHosts;
 
     /// <summary>依 CLAUDE.md 與使用者確認的預設白名單建立驗證器。</summary>
@@ -29,7 +27,7 @@ public sealed class UrlWhitelistValidator : IUrlWhitelistValidator
             StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>預設白名單：評測網域 + MathJax CDN + Google Fonts + 本地資源主機。</summary>
+    /// <summary>預設白名單：評測網域 + MathJax CDN + Google Fonts。</summary>
     public static IReadOnlyList<string> DefaultHosts() => new[]
     {
         // 主要評測網域
@@ -39,9 +37,7 @@ public sealed class UrlWhitelistValidator : IUrlWhitelistValidator
         "cdnjs.cloudflare.com",
         // Google Fonts
         "fonts.googleapis.com",
-        "fonts.gstatic.com",
-        // 本地 Monaco 編輯器資源
-        LocalAppHost
+        "fonts.gstatic.com"
     };
 
     public bool IsAllowed(string uri)

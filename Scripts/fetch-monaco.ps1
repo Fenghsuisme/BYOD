@@ -22,12 +22,12 @@ $ErrorActionPreference = "Stop"
 # 專案根目錄 = 此腳本的上一層
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDir
-$targetVs = Join-Path $projectRoot "Assets\webapp\vs"
+$targetVs = [System.IO.Path]::Combine($projectRoot, "App", "Assets", "webapp", "vs")
 
 Write-Host "Monaco Editor 版本：$Version"
 Write-Host "目標資料夾：$targetVs"
 
-$tmp = Join-Path $env:TEMP ("monaco_" + [System.Guid]::NewGuid().ToString("N"))
+$tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("monaco_" + [System.Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
 try {
@@ -41,7 +41,7 @@ try {
     Write-Host "解壓中…"
     tar -xzf $tgzPath -C $tmp
 
-    $srcVs = Join-Path $tmp "package\min\vs"
+    $srcVs = [System.IO.Path]::Combine($tmp, "package", "min", "vs")
     if (-not (Test-Path $srcVs)) {
         throw "找不到 $srcVs，套件結構可能已變更。"
     }

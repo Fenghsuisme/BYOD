@@ -1,56 +1,61 @@
-name: Build (Windows)
+name: Build (Windows + Linux)
 
-# 在雲端 Windows 驗證編譯，並產出可下載的 win-x64 單一執行檔。
+# 驗證編譯與單元測試，並產出可下載的 Windows / Linux 綠色資料夾。
 on:
   push:
     branches: ["**"]
   pull_request:
-  workflow_dispatch:   # 允許在 Actions 頁面手動觸發
+  workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: windows-latest
-
+  # 可攜邏輯層單元測試（跨平台，跑一次即可）
+  test:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Test (Core)
+        run: dotnet test tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj -c Release
 
-      - name: Setup .NET 8 SDK
-        uses: actions/setup-dotnet@v4
+  # Avalonia + CEF 客戶端：Windows 與 Linux 各自打包
+  publish:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
 
-      # 佈署 Monaco 本地資源（嚴禁外連 CDN；打包進成品）
+      # 佈署 Monaco 本地資源（不外連 CDN；打包進成品）
       - name: Fetch Monaco Editor
         shell: pwsh
         run: ./Scripts/fetch-monaco.ps1
 
-      - name: Restore
-        run: dotnet restore ByodKioskBrowser.csproj
-
-      - name: Build (Release)
-        run: dotnet build ByodKioskBrowser.csproj -c Release --no-restore
-
-      # 可攜邏輯層單元測試（白名單、事件偵測）
-      - name: Test (Core)
-        run: dotnet test tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj -c Release
-
-      # 自包含單一執行檔（依 CLAUDE.md 發佈規範）
-      - name: Publish (win-x64, single file)
+      # 自包含綠色資料夾（CEF 為多檔原生，不使用單一檔發佈）
+      - name: Publish
         run: >
-          dotnet publish ByodKioskBrowser.csproj
+          dotnet publish App/ByodKioskBrowser.App.csproj
           -c Release
-          -r win-x64
+          -r ${{ matrix.rid }}
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
           -o publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ByodKioskBrowser-win-x64
-          # 上傳整包：exe + Assets（含 Monaco 本地資源）
+          name: ByodKioskBrowser-${{ matrix.rid }}
           path: publish/**
           if-no-files-found: error
           retention-days: 14
