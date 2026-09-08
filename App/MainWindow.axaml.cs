@@ -60,8 +60,6 @@ public partial class MainWindow : Window
         ConfigureWindowChrome();
     }
 
-    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
-
     /// <summary>依模式設定視窗外觀：Kiosk（全螢幕）或診斷用一般視窗。</summary>
     private void ConfigureWindowChrome()
     {
