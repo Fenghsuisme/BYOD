@@ -28,6 +28,19 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>
 
+  <!-- 可攜邏輯層（白名單、事件偵測、模型、介面） -->
+  <ItemGroup>
+    <ProjectReference Include="Core\ByodKioskBrowser.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Core 與 tests 為獨立專案，需自 App 的預設編譯範圍排除，避免重複編譯 -->
+  <ItemGroup>
+    <Compile Remove="Core\**\*.cs" />
+    <Compile Remove="tests\**\*.cs" />
+    <None Remove="Core\**\*" />
+    <None Remove="tests\**\*" />
+  </ItemGroup>
+
   <!--
     Monaco / 本地網頁靜態資源。
     複製到輸出目錄後，執行期以 SetVirtualHostNameToFolderMapping 掛載至 appassets.local，

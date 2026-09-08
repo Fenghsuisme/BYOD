@@ -1,0 +1,39 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ByodKioskBrowser", "ByodKioskBrowser.csproj", "{F5D45F00-0F95-46B6-BDAB-62B6DEB8E7CA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ByodKioskBrowser.Core", "Core\ByodKioskBrowser.Core.csproj", "{4E6EB886-FDD8-49C4-BC10-591F5A90331C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{584A9684-84CF-42C9-B14A-8FC2CAC49439}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ByodKioskBrowser.Tests", "tests\ByodKioskBrowser.Tests\ByodKioskBrowser.Tests.csproj", "{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{F5D45F00-0F95-46B6-BDAB-62B6DEB8E7CA}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{F5D45F00-0F95-46B6-BDAB-62B6DEB8E7CA}.Debug|Any CPU.Build.0 = Debug|x64
+		{F5D45F00-0F95-46B6-BDAB-62B6DEB8E7CA}.Release|Any CPU.ActiveCfg = Release|x64
+		{F5D45F00-0F95-46B6-BDAB-62B6DEB8E7CA}.Release|Any CPU.Build.0 = Release|x64
+		{4E6EB886-FDD8-49C4-BC10-591F5A90331C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4E6EB886-FDD8-49C4-BC10-591F5A90331C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4E6EB886-FDD8-49C4-BC10-591F5A90331C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4E6EB886-FDD8-49C4-BC10-591F5A90331C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2105BFA3-E4FE-4766-B24E-92D6DFC4CBD3} = {584A9684-84CF-42C9-B14A-8FC2CAC49439}
+	EndGlobalSection
+EndGlobal

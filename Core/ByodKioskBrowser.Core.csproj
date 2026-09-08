@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    可攜的純邏輯層（無 WPF / WebView2 依賴），目標 net8.0。
+    可在 macOS / Linux 上建置與單元測試，供 WPF App 與測試專案共用。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ByodKioskBrowser</RootNamespace>
+    <AssemblyName>ByodKioskBrowser.Core</AssemblyName>
+  </PropertyGroup>
+
+</Project>

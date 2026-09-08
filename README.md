@@ -15,22 +15,29 @@
 
 ## 專案結構
 
+分為三個專案：WPF App（Windows-only）、可攜的 Core 邏輯層（net8.0，可在 macOS 建置/測試）、xUnit 測試。
+
 ```
-IDE/
-├── ByodKioskBrowser.csproj      # 專案檔（net8.0-windows）
-├── app.manifest                 # asInvoker 權限 + 高 DPI（零系統破壞）
-├── App.xaml / App.xaml.cs        # 生命週期；TEMP 快取清理（零殘留）
-├── MainWindow.xaml / .cs         # Kiosk 佈局、失焦偵測、WebMessage 同步、日誌導出
-├── Interfaces/                   # IUrlWhitelistValidator, ICheatingDetector
+BYOD/
+├── ByodKioskBrowser.sln          # 方案檔（三個專案）
+├── ByodKioskBrowser.csproj       # WPF App（net8.0-windows，Windows-only）
+├── app.manifest                  # asInvoker 權限 + 高 DPI（零系統破壞）
+├── App.xaml / App.xaml.cs         # 生命週期；TEMP 快取清理（零殘留）
+├── MainWindow.xaml / .cs          # Kiosk 佈局、失焦偵測、WebMessage 同步、日誌導出
 ├── Services/
-│   ├── SecureBrowserService.cs   # WebView2 加固、白名單、彈窗攔截
-│   ├── UrlWhitelistValidator.cs  # 主機白名單（比對 Uri.Host）
-│   └── CheatingDetector.cs       # 結構化事件紀錄 + JSON 導出
-├── Models/                       # CheatingEvent, CheatingEventType
-├── Assets/webapp/                # 本地 Monaco 網頁層
+│   └── SecureBrowserService.cs    # WebView2 加固、白名單、彈窗攔截（依賴 WebView2）
+├── Core/                          # ← 可攜邏輯層（net8.0，無 WPF/WebView2）
+│   ├── ByodKioskBrowser.Core.csproj
+│   ├── Interfaces/                # IUrlWhitelistValidator, ICheatingDetector
+│   ├── Models/                    # CheatingEvent, CheatingEventType
+│   └── Services/
+│       ├── UrlWhitelistValidator.cs  # 主機白名單（比對 Uri.Host）
+│       └── CheatingDetector.cs       # 結構化事件紀錄 + JSON 導出
+├── tests/ByodKioskBrowser.Tests/  # ← xUnit 測試（net8.0，macOS 可跑）
+├── Assets/webapp/                 # 本地 Monaco 網頁層
 │   ├── index.html / app.js / styles.css
-│   └── vs/                        # ← 需放入 Monaco min/vs（見下方）
-└── Scripts/fetch-monaco.ps1      # 一鍵下載並佈署 Monaco 本地資源
+│   └── vs/                         # ← 需放入 Monaco min/vs（見下方）
+└── Scripts/fetch-monaco.ps1       # 一鍵下載並佈署 Monaco 本地資源
 ```
 
 ## 建置步驟（Windows）
@@ -50,6 +57,22 @@ IDE/
    dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
    ```
    輸出資料夾內含 `ByodKioskBrowser.exe` 與 `Assets\`（Monaco 本地資源），整包即為綠色可攜版。
+
+## 在 macOS 上開發與測試
+
+WPF/WebView2 無法在 macOS 執行，但可做兩件事：
+
+- **編譯檢查**（catch 語法/型別/XAML 錯誤）：
+  ```bash
+  dotnet build ByodKioskBrowser.csproj   # csproj 已設 EnableWindowsTargeting（僅非 Windows 生效）
+  ```
+- **單元測試可攜邏輯**（白名單、事件偵測）：
+  ```bash
+  dotnet test tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj
+  ```
+  > 若本機僅有 .NET 9 runtime，測試專案已設 `RollForward=Major` 可直接執行；否則安裝 .NET 8 runtime。
+
+實際執行 Kiosk 畫面、驗證導航攔截 / 失焦遮罩 / 剪貼簿封鎖等**行為**，仍需在 Windows（實機或 VM）上 `dotnet run`。
 
 ## 安全設計對照（CLAUDE.md）
 

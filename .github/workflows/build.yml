@@ -31,6 +31,10 @@ jobs:
       - name: Build (Release)
         run: dotnet build ByodKioskBrowser.csproj -c Release --no-restore
 
+      # 可攜邏輯層單元測試（白名單、事件偵測）
+      - name: Test (Core)
+        run: dotnet test tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj -c Release
+
       # 自包含單一執行檔（依 CLAUDE.md 發佈規範）
       - name: Publish (win-x64, single file)
         run: >
