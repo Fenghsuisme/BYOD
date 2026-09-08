@@ -75,9 +75,11 @@ public partial class MainWindow : Window
         }
         else
         {
-            // Kiosk：無邊框、不可調整；全螢幕/置頂在視窗顯示後才套用（相容性較佳）
+            // Kiosk：在視窗顯示「前」即設定全螢幕，GNOME Wayland 才會正確全螢幕
             SystemDecorations = SystemDecorations.None;
             CanResize = false;
+            WindowState = WindowState.FullScreen;
+            Topmost = true;
         }
     }
 
@@ -87,13 +89,6 @@ public partial class MainWindow : Window
             $"DISPLAY={Environment.GetEnvironmentVariable("DISPLAY")} " +
             $"WAYLAND_DISPLAY={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")} " +
             $"bounds={Bounds}");
-
-        if (!_windowed)
-        {
-            // 先顯示再切全螢幕，較能被各視窗管理員接受
-            WindowState = WindowState.FullScreen;
-            Topmost = true;
-        }
 
         // 診斷開關：定位崩潰發生在哪一步
         var noBrowser = Environment.GetEnvironmentVariable("BYOD_NO_BROWSER") == "1";
