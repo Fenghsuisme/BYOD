@@ -86,7 +86,7 @@ sudo ./Scripts/install-linux-deps.sh
 
 - **Wayland**：`run-linux.sh` 會自動改走 XWayland（`GDK_BACKEND=x11`）以取得較佳相容性。
 - 若啟動即崩潰，多半是**缺系統庫**；用 `BYOD_DEBUG=1 ./run-linux.sh` 看缺哪個 `.so`，再補裝。
-- 若要自行在 Linux 建置（而非用 CI 成品），需先裝 .NET 8 SDK 與 PowerShell（`pwsh`）跑 `fetch-monaco.ps1`。
+- 若要自行在 Linux 建置（而非用 CI 成品），需先裝 .NET 8 SDK，並用 `./Scripts/fetch-monaco.sh` 佈署 Monaco（純 bash，不需 pwsh）。
 
 ## 在 macOS 上開發
 
