@@ -90,6 +90,17 @@ public partial class MainWindow : Window
             $"WAYLAND_DISPLAY={Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")} " +
             $"bounds={Bounds}");
 
+        if (!_windowed)
+        {
+            // 版面完成後再次套用全螢幕（GNOME Wayland/部分 WM 需顯示後才生效）
+            Dispatcher.UIThread.Post(() =>
+            {
+                WindowState = WindowState.FullScreen;
+                Topmost = true;
+                Console.WriteLine($"[BYOD] 重新套用全螢幕。bounds={Bounds} state={WindowState}");
+            }, DispatcherPriority.Background);
+        }
+
         // 診斷開關：定位崩潰發生在哪一步
         var noBrowser = Environment.GetEnvironmentVariable("BYOD_NO_BROWSER") == "1";
         var oneBrowser = Environment.GetEnvironmentVariable("BYOD_ONE_BROWSER") == "1";
