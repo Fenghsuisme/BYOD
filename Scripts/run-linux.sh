@@ -24,14 +24,12 @@ chmod +x "$BIN" 2>/dev/null || true
 # CEF 的 browser 子行程執行檔（名稱可能因版本而異）
 find . -maxdepth 2 -type f -iname '*browserprocess*' -exec chmod +x {} \; 2>/dev/null || true
 
-# Wayland 工作階段：透過 XWayland 走 X11，CEF 相容性較佳
-if [[ "${XDG_SESSION_TYPE:-}" == "wayland" ]]; then
-    echo "偵測到 Wayland — 將透過 XWayland (X11) 執行以取得較佳相容性。"
-    export GDK_BACKEND=x11
-fi
+# 診斷資訊
+echo "工作階段：${XDG_SESSION_TYPE:-未知}   DISPLAY=${DISPLAY:-未設定}"
 
-if [[ "${BYOD_DEBUG:-}" == "1" ]]; then
-    exec "$BIN"
-else
+# 預設顯示 stderr（除錯期）；設 BYOD_QUIET=1 可靜音
+if [[ "${BYOD_QUIET:-}" == "1" ]]; then
     exec "$BIN" 2>/dev/null
+else
+    exec "$BIN"
 fi
