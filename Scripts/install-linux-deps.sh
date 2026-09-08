@@ -14,17 +14,41 @@ fi
 if command -v apt-get >/dev/null 2>&1; then
     echo "偵測到 apt（Debian/Ubuntu）"
     apt-get update
-    apt-get install -y \
-        libnss3 libnspr4 \
-        libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 \
-        libcups2 \
-        libdrm2 libgbm1 \
-        libxkbcommon0 \
-        libxcomposite1 libxdamage1 libxrandr2 libxfixes3 libxext6 libx11-6 libxcb1 libxrender1 \
-        libpango-1.0-0 libcairo2 \
-        libasound2 \
-        libglib2.0-0 libgtk-3-0 \
-        fonts-liberation
+
+    # 每項可用「新名|舊名」列出（因應 Ubuntu 24.04+ 的 t64 轉換）；
+    # 逐一挑選實際可安裝者，避免虛擬套件或單一缺項導致整批中止。
+    CANDIDATES=(
+        "libnss3" "libnspr4"
+        "libatk1.0-0t64|libatk1.0-0" "libatk-bridge2.0-0t64|libatk-bridge2.0-0" "libatspi2.0-0t64|libatspi2.0-0"
+        "libcups2t64|libcups2"
+        "libdrm2" "libgbm1"
+        "libxkbcommon0"
+        "libxcomposite1" "libxdamage1" "libxrandr2" "libxfixes3" "libxext6" "libx11-6" "libxcb1" "libxrender1"
+        "libpango-1.0-0" "libcairo2"
+        "libasound2t64|libasound2"
+        "libglib2.0-0t64|libglib2.0-0" "libgtk-3-0t64|libgtk-3-0"
+        "fonts-liberation"
+    )
+
+    TO_INSTALL=()
+    for entry in "${CANDIDATES[@]}"; do
+        IFS='|' read -ra alts <<< "$entry"
+        picked=""
+        for a in "${alts[@]}"; do
+            if apt-get install -y --dry-run "$a" >/dev/null 2>&1; then
+                picked="$a"
+                break
+            fi
+        done
+        if [[ -n "$picked" ]]; then
+            TO_INSTALL+=("$picked")
+        else
+            echo "  略過（找不到可安裝的候選）：$entry" >&2
+        fi
+    done
+
+    echo "將安裝：${TO_INSTALL[*]}"
+    apt-get install -y "${TO_INSTALL[@]}"
 elif command -v dnf >/dev/null 2>&1; then
     echo "偵測到 dnf（Fedora/RHEL）"
     dnf install -y \
