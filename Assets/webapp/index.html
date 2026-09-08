@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      內容安全政策：僅允許本頁自身資源（appassets.local），嚴禁任何外連。
+      這是「嚴禁外連 CDN」的第二道防線（第一道為 WebView2 導航白名單）。
+    -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; connect-src 'self';" />
+    <title>本地程式碼編輯器</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <div id="toolbar">
+        <span id="lang-label">語言：</span>
+        <select id="language-select">
+            <option value="cpp">C++</option>
+            <option value="c">C</option>
+            <option value="python">Python</option>
+            <option value="java">Java</option>
+        </select>
+        <span id="status">編輯器離線模式（本地資源）</span>
+    </div>
+
+    <div id="editor"></div>
+
+    <div id="fallback" class="hidden">
+        <h2>尚未安裝 Monaco Editor 本地資源</h2>
+        <p>請在 Windows 端執行 <code>Scripts\fetch-monaco.ps1</code>，
+           將 Monaco 的 <code>min/vs</code> 目錄放置於 <code>Assets\webapp\vs</code>，再重新建置。</p>
+    </div>
+
+    <!-- 本地 Monaco AMD 載入器（不得替換為 CDN 連結） -->
+    <script src="vs/loader.js" onerror="window.__monacoLoadFailed = true"></script>
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# .NET build 產物
+bin/
+obj/
+*.user
+
+# 發佈輸出
+publish/
+out/
+
+# 執行期日誌（稽核用途，不進版控）
+logs/
+
+# Monaco 本地資源（由 Scripts/fetch-monaco.ps1 取得，體積大不進版控）
+Assets/webapp/vs/*
+!Assets/webapp/vs/PLACE_MONACO_HERE.md
+
+# IDE
+.vs/
+.idea/
+*.suo

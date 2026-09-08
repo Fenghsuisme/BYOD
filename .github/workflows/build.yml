@@ -1,0 +1,52 @@
+name: Build (Windows)
+
+# 在雲端 Windows 驗證編譯，並產出可下載的 win-x64 單一執行檔。
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:   # 允許在 Actions 頁面手動觸發
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # 佈署 Monaco 本地資源（嚴禁外連 CDN；打包進成品）
+      - name: Fetch Monaco Editor
+        shell: pwsh
+        run: ./Scripts/fetch-monaco.ps1
+
+      - name: Restore
+        run: dotnet restore ByodKioskBrowser.csproj
+
+      - name: Build (Release)
+        run: dotnet build ByodKioskBrowser.csproj -c Release --no-restore
+
+      # 自包含單一執行檔（依 CLAUDE.md 發佈規範）
+      - name: Publish (win-x64, single file)
+        run: >
+          dotnet publish ByodKioskBrowser.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ByodKioskBrowser-win-x64
+          # 上傳整包：exe + Assets（含 Monaco 本地資源）
+          path: publish/**
+          if-no-files-found: error
+          retention-days: 14
