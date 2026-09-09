@@ -8,11 +8,17 @@ html, body {
     overflow: hidden;
 }
 
+body {
+    display: flex;
+    flex-direction: column;
+}
+
 #toolbar {
     display: flex;
     align-items: center;
     gap: 8px;
     height: 36px;
+    flex: 0 0 36px;
     padding: 0 12px;
     background: #252526;
     border-bottom: 1px solid #3e3e42;
@@ -29,19 +35,79 @@ html, body {
     outline: none;
 }
 
+#run-btn {
+    background: #0e639c;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+#run-btn:hover { background: #1177bb; }
+#run-btn:disabled { background: #555; cursor: default; }
+
+#run-status { color: #dcdcaa; font-size: 12px; }
+
 #status {
     margin-left: auto;
     color: #9cdcfe;
     font-size: 12px;
 }
 
+/* 編輯器：佔用剩餘空間 */
 #editor {
-    position: absolute;
-    top: 36px;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    flex: 1 1 auto;
+    min-height: 0;
 }
+
+/* 底部執行面板 */
+#runner {
+    flex: 0 0 220px;
+    display: flex;
+    border-top: 1px solid #3e3e42;
+    background: #1e1e1e;
+}
+
+.io-col {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    border-right: 1px solid #2d2d30;
+}
+
+.io-col:last-child { border-right: none; }
+
+.io-label {
+    flex: 0 0 22px;
+    line-height: 22px;
+    padding: 0 8px;
+    font-size: 12px;
+    color: #9cdcfe;
+    background: #252526;
+    border-bottom: 1px solid #2d2d30;
+}
+
+#stdin, #output {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 8px;
+    box-sizing: border-box;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow: auto;
+}
+
+#output.error { color: #f48771; }
+#output.ok { color: #b5cea8; }
 
 #fallback {
     position: absolute;
@@ -51,6 +117,7 @@ html, body {
     bottom: 0;
     padding: 32px;
     box-sizing: border-box;
+    background: #1e1e1e;
 }
 
 #fallback code {

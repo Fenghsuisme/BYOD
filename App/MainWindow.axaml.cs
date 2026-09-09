@@ -8,6 +8,7 @@ using Avalonia.Interactivity;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using ByodKioskBrowser.Browser;
+using ByodKioskBrowser.Execution;
 using ByodKioskBrowser.Interfaces;
 using ByodKioskBrowser.Models;
 using ByodKioskBrowser.Services;
@@ -21,7 +22,8 @@ public partial class MainWindow : Window
 
     private readonly IUrlWhitelistValidator _whitelist = new UrlWhitelistValidator();
     private readonly ICheatingDetector _detector;
-    private readonly EditorBridge _bridge = new();
+    private readonly CodeRunnerService _runner = new();
+    private readonly EditorBridge _bridge;
 
     private AvaloniaCefBrowser? _judgeBrowser;
     private AvaloniaCefBrowser? _editorBrowser;
@@ -48,6 +50,7 @@ public partial class MainWindow : Window
         _exportLogPath = Path.Combine(logDir, $"events_{stamp}.json");
         _detector = new CheatingDetector(_liveLogPath);
 
+        _bridge = new EditorBridge(_runner);
         _bridge.Ready += OnEditorReady;
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
@@ -163,7 +166,8 @@ public partial class MainWindow : Window
         Console.WriteLine("[BYOD] 步驟4：建立 editor 瀏覽器…");
         _editorBrowser = CreateBrowser();
         Console.WriteLine("[BYOD] 步驟5：註冊 JS 橋接…");
-        _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge");
+        // 以背景執行緒處理器註冊，讓 runCode（編譯/執行）不阻塞 UI，並可回傳 Task 結果
+        _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge", CallNativeAsync);
         Console.WriteLine("[BYOD] 步驟6：設定 editor Address（app://）…");
         _editorBrowser.Address = LocalAssetSchemeHandlerFactory.EditorStartUrl;
         EditorHost.Child = _editorBrowser;
@@ -221,6 +225,28 @@ public partial class MainWindow : Window
     }
 
     private void RunInEditor(string script) => _editorBrowser?.ExecuteJavaScript(script);
+
+    /// <summary>
+    /// JS 呼叫 .NET 方法的處理器：於背景執行緒執行，避免長時間的 runCode 阻塞 CEF/UI；
+    /// 若方法回傳 Task，會等待其完成並回傳結果值。
+    /// </summary>
+    private static Task<object?> CallNativeAsync(Func<object?> nativeMethod)
+    {
+        return Task.Run(() =>
+        {
+            var result = nativeMethod.Invoke();
+            if (result is Task task)
+            {
+                task.GetAwaiter().GetResult();
+                if (task.GetType().IsGenericType)
+                {
+                    return (object?)((dynamic)task).Result;
+                }
+                return null;
+            }
+            return result;
+        });
+    }
 
     /// <summary>將字串安全轉為 JS 字面值（含引號）。</summary>
     private static string JsString(string value) => JsonSerializer.Serialize(value);

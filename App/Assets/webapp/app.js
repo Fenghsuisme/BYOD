@@ -135,6 +135,75 @@
             }
         };
 
+        // ================= 編譯 / 執行 =================
+        var runBtn = document.getElementById("run-btn");
+        var stdinEl = document.getElementById("stdin");
+        var outputEl = document.getElementById("output");
+        var runStatus = document.getElementById("run-status");
+
+        function setOutput(text, cls) {
+            outputEl.textContent = text || "";
+            outputEl.className = cls || "";
+        }
+
+        function renderResult(r) {
+            if (!r) { setOutput("（無回應）", "error"); return; }
+
+            if (r.phase === "error") {
+                setOutput(r.message || "執行器錯誤", "error");
+                return;
+            }
+            if (r.phase === "compile") {
+                setOutput("編譯錯誤：\n" + (r.stderr || r.message || ""), "error");
+                return;
+            }
+            // phase === run
+            var parts = [];
+            if (r.stdout) { parts.push(r.stdout.replace(/\n$/, "")); }
+            if (r.stderr) { parts.push("[stderr]\n" + r.stderr.replace(/\n$/, "")); }
+            var footer = "\n──────────\n";
+            if (r.timedOut) {
+                footer += "⏱ " + (r.message || "執行逾時");
+            } else {
+                footer += "結束代碼 " + r.exitCode + "，耗時 " + r.timeMs + " ms";
+            }
+            setOutput((parts.join("\n") || "(無輸出)") + footer, r.ok ? "ok" : "error");
+        }
+
+        var running = false;
+        function runCode() {
+            if (running) { return; }
+            var b = bridge();
+            if (!b || !b.runCode) { setOutput("橋接未就緒，無法執行。", "error"); return; }
+
+            running = true;
+            runBtn.disabled = true;
+            runStatus.textContent = "編譯執行中…";
+            setOutput("");
+
+            var lang = languageSelect.value;
+            var code = editor.getValue();
+            var stdin = stdinEl.value || "";
+
+            Promise.resolve(b.runCode(lang, code, stdin))
+                .then(function (json) {
+                    var r;
+                    try { r = JSON.parse(json); } catch (e) { r = null; }
+                    renderResult(r);
+                })
+                .catch(function (e) {
+                    setOutput("執行失敗：" + e, "error");
+                })
+                .then(function () {
+                    running = false;
+                    runBtn.disabled = false;
+                    runStatus.textContent = "";
+                });
+        }
+
+        runBtn.addEventListener("click", runCode);
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);
+
         // 通知 C# 編輯器已就緒
         notifyReady();
     });

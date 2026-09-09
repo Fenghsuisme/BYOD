@@ -18,6 +18,7 @@ if command -v apt-get >/dev/null 2>&1; then
     # 每項可用「新名|舊名」列出（因應 Ubuntu 24.04+ 的 t64 轉換）；
     # 逐一挑選實際可安裝者，避免虛擬套件或單一缺項導致整批中止。
     CANDIDATES=(
+        "build-essential"
         "libnss3" "libnspr4"
         "libatk1.0-0t64|libatk1.0-0" "libatk-bridge2.0-0t64|libatk-bridge2.0-0" "libatspi2.0-0t64|libatspi2.0-0"
         "libcups2t64|libcups2"
@@ -52,6 +53,7 @@ if command -v apt-get >/dev/null 2>&1; then
 elif command -v dnf >/dev/null 2>&1; then
     echo "偵測到 dnf（Fedora/RHEL）"
     dnf install -y \
+        gcc gcc-c++ make \
         nss nspr \
         at-spi2-atk at-spi2-core atk \
         cups-libs \
@@ -65,6 +67,7 @@ elif command -v dnf >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
     echo "偵測到 pacman（Arch）"
     pacman -Sy --noconfirm \
+        gcc make \
         nss nspr \
         at-spi2-core atk \
         cups \
