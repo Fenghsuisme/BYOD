@@ -275,6 +275,15 @@
         }
 
         var running = false;
+        var runTimeout = null;
+
+        function finishRun() {
+            running = false;
+            runBtn.disabled = false;
+            runStatus.textContent = "";
+            if (runTimeout) { clearTimeout(runTimeout); runTimeout = null; }
+        }
+
         function runCode() {
             if (running) { return; }
             var b = bridge();
@@ -285,25 +294,28 @@
             runStatus.textContent = "編譯執行中…";
             setOutput("");
 
-            var lang = languageSelect.value;
-            var code = editor.getValue();
-            var stdin = stdinEl.value || "";
+            // fire-and-forget：結果由 C# 呼叫 window.__runResult 推回
+            try {
+                b.runCode(languageSelect.value, editor.getValue(), stdinEl.value || "");
+            } catch (e) {
+                finishRun();
+                setOutput("執行失敗：" + e, "error");
+                return;
+            }
 
-            Promise.resolve(b.runCode(lang, code, stdin))
-                .then(function (json) {
-                    var r;
-                    try { r = JSON.parse(json); } catch (e) { r = null; }
-                    renderResult(r);
-                })
-                .catch(function (e) {
-                    setOutput("執行失敗：" + e, "error");
-                })
-                .then(function () {
-                    running = false;
-                    runBtn.disabled = false;
-                    runStatus.textContent = "";
-                });
+            // 安全逾時：萬一未收到回傳也解鎖（C# 執行 timeout 5s，這裡放寬到 30s）
+            runTimeout = setTimeout(function () {
+                if (running) { finishRun(); setOutput("執行逾時，未收到結果。", "error"); }
+            }, 30000);
         }
+
+        // 供 C# 端呼叫：接收編譯 / 執行結果
+        window.__runResult = function (json) {
+            var r;
+            try { r = JSON.parse(json); } catch (e) { r = null; }
+            finishRun();
+            renderResult(r);
+        };
 
         runBtn.addEventListener("click", runCode);
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);

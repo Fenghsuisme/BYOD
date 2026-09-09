@@ -65,6 +65,7 @@ public partial class MainWindow : Window
         _bridge.Ready += OnEditorReady;
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
+        _bridge.RunCompleted += OnRunCompleted;
 
         // 判題頁複製 → 推入編輯器內部剪貼簿
         _hostBridge.PageCopied += OnPageCopied;
@@ -199,8 +200,7 @@ public partial class MainWindow : Window
         Console.WriteLine("[BYOD] 步驟4：建立 editor 瀏覽器…");
         _editorBrowser = CreateBrowser();
         Console.WriteLine("[BYOD] 步驟5：註冊 JS 橋接…");
-        // 以背景執行緒處理器註冊，讓 runCode（編譯/執行）不阻塞 UI，並可回傳 Task 結果
-        _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge", CallNativeAsync);
+        _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge");
         Console.WriteLine("[BYOD] 步驟6：設定 editor Address（app://）…");
         _editorBrowser.Address = LocalAssetSchemeHandlerFactory.EditorStartUrl;
         EditorHost.Child = _editorBrowser;
@@ -267,25 +267,12 @@ public partial class MainWindow : Window
 
     private void RunInEditor(string script) => _editorBrowser?.ExecuteJavaScript(script);
 
-    /// <summary>
-    /// JS 呼叫 .NET 方法的處理器：於背景執行緒執行，避免長時間的 runCode 阻塞 CEF/UI；
-    /// 若方法回傳 Task，會等待其完成並回傳結果值。
-    /// </summary>
-    private static Task<object?> CallNativeAsync(Func<object?> nativeMethod)
+    /// <summary>編譯 / 執行完成 → 把結果 JSON 推回編輯器頁面顯示。</summary>
+    private void OnRunCompleted(string json)
     {
-        return Task.Run(() =>
+        Dispatcher.UIThread.Post(() =>
         {
-            var result = nativeMethod.Invoke();
-            if (result is Task task)
-            {
-                task.GetAwaiter().GetResult();
-                if (task.GetType().IsGenericType)
-                {
-                    return (object?)((dynamic)task).Result;
-                }
-                return null;
-            }
-            return result;
+            _editorBrowser?.ExecuteJavaScript($"window.__runResult && window.__runResult({JsString(json)})");
         });
     }
 
