@@ -33,8 +33,7 @@
 
     require(["vs/editor/editor.main"], function () {
         var editor = monaco.editor.create(document.getElementById("editor"), {
-            value: "",
-            language: "cpp",
+            model: null,
             theme: "vs-dark",
             fontSize: 14,
             automaticLayout: true,
@@ -105,10 +104,98 @@
             notifyCheat("external-drop-blocked");
         }, true);
 
-        // ================= 語言切換 =================
+        // ================= 分頁管理（多檔案） =================
         var languageSelect = document.getElementById("language-select");
+        var tabsEl = document.getElementById("tabs");
+        var newTabBtn = document.getElementById("new-tab");
+
+        var tabs = [];
+        var activeId = null;
+        var tabSeq = 0;
+
+        function extForLang(lang) { return lang === "c" ? ".c" : ".cpp"; }
+        function langForName(name) { return /\.c$/i.test(name) ? "c" : "cpp"; }
+        function activeTab() { return tabs.find(function (t) { return t.id === activeId; }); }
+
+        function renderTabs() {
+            tabsEl.innerHTML = "";
+            tabs.forEach(function (tab) {
+                var el = document.createElement("div");
+                el.className = "tab" + (tab.id === activeId ? " active" : "");
+
+                var name = document.createElement("span");
+                name.className = "tab-name";
+                name.textContent = tab.name;
+                name.title = "點擊切換、雙擊改名";
+                name.addEventListener("click", function () { activateTab(tab.id); });
+                name.addEventListener("dblclick", function () { renameTab(tab); });
+
+                var close = document.createElement("span");
+                close.className = "tab-close";
+                close.textContent = "×";
+                close.title = "關閉";
+                close.addEventListener("click", function (e) { e.stopPropagation(); closeTab(tab.id); });
+
+                el.appendChild(name);
+                el.appendChild(close);
+                tabsEl.appendChild(el);
+            });
+        }
+
+        function activateTab(id) {
+            var tab = tabs.find(function (t) { return t.id === id; });
+            if (!tab) { return; }
+            activeId = id;
+            editor.setModel(tab.model);
+            if (languageSelect.value !== tab.lang) { languageSelect.value = tab.lang; }
+            renderTabs();
+            editor.focus();
+        }
+
+        function createTab(name, content, lang) {
+            tabSeq++;
+            lang = lang || "cpp";
+            var id = "t" + tabSeq;
+            var tab = {
+                id: id,
+                name: name || ("file" + tabSeq + extForLang(lang)),
+                lang: lang,
+                model: monaco.editor.createModel(content || "", lang)
+            };
+            tabs.push(tab);
+            activateTab(id);
+            return tab;
+        }
+
+        function closeTab(id) {
+            var idx = tabs.findIndex(function (t) { return t.id === id; });
+            if (idx < 0) { return; }
+            tabs[idx].model.dispose();
+            tabs.splice(idx, 1);
+            if (tabs.length === 0) { createTab(null, "", languageSelect.value); return; }
+            if (activeId === id) { activateTab(tabs[Math.max(0, idx - 1)].id); }
+            else { renderTabs(); }
+        }
+
+        function renameTab(tab) {
+            var name = window.prompt ? window.prompt("檔名：", tab.name) : null;
+            if (!name) { return; }
+            tab.name = name;
+            tab.lang = langForName(name);
+            monaco.editor.setModelLanguage(tab.model, tab.lang);
+            if (tab.id === activeId && languageSelect.value !== tab.lang) { languageSelect.value = tab.lang; }
+            renderTabs();
+        }
+
+        newTabBtn.addEventListener("click", function () { createTab(null, "", languageSelect.value); });
+
         languageSelect.addEventListener("change", function () {
-            monaco.editor.setModelLanguage(editor.getModel(), languageSelect.value);
+            var tab = activeTab();
+            if (!tab) { return; }
+            tab.lang = languageSelect.value;
+            tab.name = tab.name.replace(/\.(c|cpp)$/i, extForLang(tab.lang));
+            monaco.editor.setModelLanguage(tab.model, tab.lang);
+            renderTabs();
         });
 
         // ================= 內容同步 =================
@@ -120,20 +207,25 @@
             }, 250);
         });
 
-        // 供 C# 端呼叫（ExecuteJavaScript）以推送程式碼 / 語言
+        // 供 C# 端呼叫（ExecuteJavaScript）以推送程式碼 / 語言（作用於目前分頁）
         window.__setCode = function (code) {
-            if (editor.getValue() !== code) {
+            if (activeTab() && editor.getValue() !== code) {
                 editor.setValue(code || "");
             }
         };
 
         window.__setLanguage = function (lang) {
-            if (!lang) { return; }
-            monaco.editor.setModelLanguage(editor.getModel(), lang);
-            if (languageSelect.value !== lang) {
-                languageSelect.value = lang;
-            }
+            var tab = activeTab();
+            if (!lang || !tab) { return; }
+            tab.lang = lang;
+            tab.name = tab.name.replace(/\.(c|cpp)$/i, extForLang(lang));
+            monaco.editor.setModelLanguage(tab.model, lang);
+            if (languageSelect.value !== lang) { languageSelect.value = lang; }
+            renderTabs();
         };
+
+        // 建立第一個分頁
+        createTab(null, "", "cpp");
 
         // ================= 編譯 / 執行 =================
         var runBtn = document.getElementById("run-btn");

@@ -56,6 +56,66 @@ body {
     font-size: 12px;
 }
 
+/* 分頁列 */
+#tabbar {
+    display: flex;
+    align-items: stretch;
+    height: 30px;
+    flex: 0 0 30px;
+    background: #252526;
+    border-bottom: 1px solid #3e3e42;
+    overflow: hidden;
+}
+
+#tabs {
+    display: flex;
+    align-items: stretch;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 12px;
+    max-width: 200px;
+    background: #2d2d2d;
+    border-right: 1px solid #252526;
+    color: #b0b0b0;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tab.active {
+    background: #1e1e1e;
+    color: #ffffff;
+    border-top: 2px solid #0e639c;
+}
+
+.tab-name { overflow: hidden; text-overflow: ellipsis; }
+
+.tab-close {
+    color: #999;
+    border-radius: 3px;
+    padding: 0 4px;
+    line-height: 16px;
+}
+
+.tab-close:hover { background: #55555580; color: #fff; }
+
+#new-tab {
+    background: transparent;
+    color: #cccccc;
+    border: none;
+    font-size: 18px;
+    width: 34px;
+    cursor: pointer;
+}
+
+#new-tab:hover { background: #2d2d2d; }
+
 /* 編輯器：佔用剩餘空間 */
 #editor {
     flex: 1 1 auto;
