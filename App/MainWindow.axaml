@@ -35,7 +35,21 @@
 
             <!-- 左 評測網站 / 右 本地 Monaco 編輯器 -->
             <Grid Grid.Row="1" ColumnDefinitions="3*,4,2*">
-                <Border Grid.Column="0" x:Name="JudgeHost" />
+                <!-- 左：導覽列 + 評測網站 -->
+                <Grid Grid.Column="0" RowDefinitions="32,*">
+                    <Border Grid.Row="0" Background="#252526"
+                            BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                    Margin="6,0" Spacing="4">
+                            <Button x:Name="BackButton" Content="◀ 返回" Padding="8,2" />
+                            <Button x:Name="ForwardButton" Content="前進 ▶" Padding="8,2" />
+                            <Button x:Name="ReloadButton" Content="⟳ 重新整理" Padding="8,2" />
+                            <Button x:Name="HomeButton" Content="⌂ 首頁" Padding="8,2" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Row="1" x:Name="JudgeHost" />
+                </Grid>
+
                 <GridSplitter Grid.Column="1" Background="#3E3E42" />
                 <Border Grid.Column="2" x:Name="EditorHost" />
             </Grid>

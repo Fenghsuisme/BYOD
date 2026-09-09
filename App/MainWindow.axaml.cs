@@ -44,9 +44,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        _sessionFolder = Path.Combine(AppContext.BaseDirectory, "exams", $"exam_{stamp}");
+        // 資料夾以日期時間為名（HH-mm-ss 避免同日多場衝突）
+        var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        _sessionFolder = Path.Combine(AppContext.BaseDirectory, "exams", stamp);
         Directory.CreateDirectory(_sessionFolder);
+        Console.WriteLine($"[BYOD] 本場考試資料夾：{_sessionFolder}");
         _liveLogPath = Path.Combine(_sessionFolder, "events.jsonl");
         _exportLogPath = Path.Combine(_sessionFolder, "events.json");
         _detector = new CheatingDetector(_liveLogPath);
@@ -63,6 +65,12 @@ public partial class MainWindow : Window
         EndExamButton.Click += (_, _) => ConfirmOverlay.IsVisible = true;
         ConfirmNoButton.Click += (_, _) => ConfirmOverlay.IsVisible = false;
         ConfirmYesButton.Click += async (_, _) => await EndExamAsync();
+
+        // 判題站導覽鍵（作用於左側瀏覽器）
+        BackButton.Click += (_, _) => { if (_judgeBrowser?.CanGoBack == true) _judgeBrowser.GoBack(); };
+        ForwardButton.Click += (_, _) => { if (_judgeBrowser?.CanGoForward == true) _judgeBrowser.GoForward(); };
+        ReloadButton.Click += (_, _) => _judgeBrowser?.Reload();
+        HomeButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = JudgeStartUrl; };
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
@@ -324,6 +332,7 @@ public partial class MainWindow : Window
 
         await ExportLogsAsync();
         _logExported = true;
+        Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
         _proctorExit = true; // 放行關閉
         Close();
     }
