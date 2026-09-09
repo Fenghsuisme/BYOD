@@ -32,5 +32,17 @@ if [[ ! -f "App/Assets/webapp/vs/loader.js" ]]; then
     ./Scripts/fetch-monaco.sh
 fi
 
+# 確保 C/C++ 編譯器存在，否則編輯器的「▶ 執行」無法編譯。
+# 注意：Linux 用的是 g++ / gcc（build-essential）；MinGW 是「Windows 版 gcc」，
+# 僅在 Windows 上部署時才需要，Linux 用不到。
+if ! command -v g++ >/dev/null 2>&1; then
+    echo "找不到 g++（C/C++ 編譯器）。將執行 Scripts/install-linux-deps.sh 安裝（需 sudo）…"
+    if command -v sudo >/dev/null 2>&1; then
+        sudo ./Scripts/install-linux-deps.sh
+    else
+        echo "請以 root 執行： ./Scripts/install-linux-deps.sh" >&2
+    fi
+fi
+
 echo "啟動中…（離開：Ctrl+Alt+Shift+Q 或右上「結束考試」）"
 exec dotnet run --project App/ByodKioskBrowser.App.csproj "$@"

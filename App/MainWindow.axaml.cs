@@ -24,6 +24,14 @@ public partial class MainWindow : Window
     private readonly ICheatingDetector _detector;
     private readonly CodeRunnerService _runner = new();
     private readonly EditorBridge _bridge;
+    private readonly HostBridge _hostBridge = new();
+
+    // 判題頁複製監聽：於頁面載入後注入，攔截複製並回報給 hostBridge
+    private const string JudgeCopyListenerScript =
+        "(function(){document.addEventListener('copy',function(){try{" +
+        "var t=window.getSelection?window.getSelection().toString():'';" +
+        "if(t&&window.hostBridge&&window.hostBridge.copyFromPage){window.hostBridge.copyFromPage(t);}" +
+        "}catch(e){}},true);})();";
 
     private AvaloniaCefBrowser? _judgeBrowser;
     private AvaloniaCefBrowser? _editorBrowser;
@@ -57,6 +65,9 @@ public partial class MainWindow : Window
         _bridge.Ready += OnEditorReady;
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
+
+        // 判題頁複製 → 推入編輯器內部剪貼簿
+        _hostBridge.PageCopied += OnPageCopied;
 
         Activated += (_, _) => Dispatcher.UIThread.Post(() => WarningOverlay.IsVisible = false);
         Deactivated += (_, _) => Dispatcher.UIThread.Post(OnWindowDeactivated);
@@ -164,6 +175,14 @@ public partial class MainWindow : Window
         // 左：評測網站
         Console.WriteLine("[BYOD] 步驟1：建立 judge 瀏覽器…");
         _judgeBrowser = CreateBrowser();
+        _judgeBrowser.RegisterJavascriptObject(_hostBridge, "hostBridge");
+        _judgeBrowser.LoadEnd += (_, e) =>
+        {
+            if (e.Frame != null && e.Frame.IsMain)
+            {
+                _judgeBrowser?.ExecuteJavaScript(JudgeCopyListenerScript);
+            }
+        };
         Console.WriteLine("[BYOD] 步驟2：設定 judge Address…");
         _judgeBrowser.Address = JudgeStartUrl;
         JudgeHost.Child = _judgeBrowser;
@@ -235,6 +254,15 @@ public partial class MainWindow : Window
             CheatingEventType.BlockedExternalPaste,
             "編輯器已封鎖外部剪貼簿 / 拖放操作。",
             reason);
+    }
+
+    /// <summary>判題頁複製的文字 → 推入編輯器的內部剪貼簿（允許貼上）。</summary>
+    private void OnPageCopied(string text)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _editorBrowser?.ExecuteJavaScript($"window.__setClipboard && window.__setClipboard({JsString(text)})");
+        });
     }
 
     private void RunInEditor(string script) => _editorBrowser?.ExecuteJavaScript(script);

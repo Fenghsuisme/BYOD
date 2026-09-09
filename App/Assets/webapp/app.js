@@ -224,6 +224,11 @@
             renderTabs();
         };
 
+        // 供 C# 端呼叫：把判題頁複製的文字寫入內部剪貼簿（允許貼上，仍擋外部系統剪貼簿）
+        window.__setClipboard = function (text) {
+            internalClipboard = text || "";
+        };
+
         // 供 C# 端呼叫：收集所有分頁內容（結束考試時繳交）
         window.__collectFiles = function () {
             return JSON.stringify(tabs.map(function (t) {
