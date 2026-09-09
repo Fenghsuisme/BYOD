@@ -224,6 +224,13 @@
             renderTabs();
         };
 
+        // 供 C# 端呼叫：收集所有分頁內容（結束考試時繳交）
+        window.__collectFiles = function () {
+            return JSON.stringify(tabs.map(function (t) {
+                return { name: t.name, content: t.model.getValue(), lang: t.lang };
+            }));
+        };
+
         // 建立第一個分頁
         createTab(null, "", "cpp");
 

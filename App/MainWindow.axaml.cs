@@ -35,7 +35,8 @@ public partial class MainWindow : Window
     // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
     private readonly bool _windowed = Environment.GetEnvironmentVariable("BYOD_WINDOWED") == "1";
 
-    // 稽核日誌路徑（保留於執行檔旁 logs 資料夾）
+    // 本次考試工作階段資料夾（每次啟動新建）；檔案與紀錄都存在此
+    private readonly string _sessionFolder;
     private readonly string _liveLogPath;
     private readonly string _exportLogPath;
 
@@ -43,11 +44,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        var logDir = Path.Combine(AppContext.BaseDirectory, "logs");
-        Directory.CreateDirectory(logDir);
         var stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        _liveLogPath = Path.Combine(logDir, $"events_{stamp}.jsonl");
-        _exportLogPath = Path.Combine(logDir, $"events_{stamp}.json");
+        _sessionFolder = Path.Combine(AppContext.BaseDirectory, "exams", $"exam_{stamp}");
+        Directory.CreateDirectory(_sessionFolder);
+        _liveLogPath = Path.Combine(_sessionFolder, "events.jsonl");
+        _exportLogPath = Path.Combine(_sessionFolder, "events.json");
         _detector = new CheatingDetector(_liveLogPath);
 
         _bridge = new EditorBridge(_runner);
@@ -57,6 +58,11 @@ public partial class MainWindow : Window
 
         Activated += (_, _) => Dispatcher.UIThread.Post(() => WarningOverlay.IsVisible = false);
         Deactivated += (_, _) => Dispatcher.UIThread.Post(OnWindowDeactivated);
+
+        // 結束考試按鈕與確認遮罩
+        EndExamButton.Click += (_, _) => ConfirmOverlay.IsVisible = true;
+        ConfirmNoButton.Click += (_, _) => ConfirmOverlay.IsVisible = false;
+        ConfirmYesButton.Click += async (_, _) => await EndExamAsync();
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
@@ -197,9 +203,8 @@ public partial class MainWindow : Window
 
     private void OnWindowDeactivated()
     {
-        var count = _detector.RecordDeactivation();
-        DeactivationCountText.Text = count.ToString();
-        OverlayCountText.Text = $"本次已累計失焦 {count} 次";
+        // 仍記錄失焦事件（寫入紀錄），但不再於畫面顯示計數
+        _detector.RecordDeactivation();
         WarningOverlay.IsVisible = true;
     }
 
@@ -294,6 +299,97 @@ public partial class MainWindow : Window
         {
             // 導出失敗不阻擋關閉；即時 JSONL 仍保有紀錄
         }
+    }
+
+    #endregion
+
+    #region 結束考試（繳交）
+
+    /// <summary>學生按下「結束考試」：儲存所有分頁檔案與紀錄至本次資料夾，然後關閉。</summary>
+    private async Task EndExamAsync()
+    {
+        ConfirmOverlay.IsVisible = false;
+        StatusText.Text = "正在儲存與繳交…";
+
+        _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
+
+        try
+        {
+            await SaveAllFilesAsync();
+        }
+        catch
+        {
+            // 存檔失敗不阻擋後續流程
+        }
+
+        await ExportLogsAsync();
+        _logExported = true;
+        _proctorExit = true; // 放行關閉
+        Close();
+    }
+
+    /// <summary>向編輯器索取所有分頁內容，逐一寫入本次資料夾的 files 子目錄（由 C# 存檔，編輯器不碰檔案系統）。</summary>
+    private async Task SaveAllFilesAsync()
+    {
+        if (_editorBrowser == null)
+        {
+            return;
+        }
+
+        string json;
+        try
+        {
+            json = await _editorBrowser.EvaluateJavaScript<string>(
+                "window.__collectFiles ? window.__collectFiles() : '[]'");
+        }
+        catch
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return;
+        }
+
+        var filesDir = Path.Combine(_sessionFolder, "files");
+        Directory.CreateDirectory(filesDir);
+
+        using var doc = JsonDocument.Parse(json);
+        var index = 0;
+        foreach (var el in doc.RootElement.EnumerateArray())
+        {
+            index++;
+            var name = el.TryGetProperty("name", out var n) ? n.GetString() : null;
+            var content = el.TryGetProperty("content", out var c) ? c.GetString() : string.Empty;
+
+            var safeName = SanitizeFileName(name, index);
+            var path = Path.Combine(filesDir, safeName);
+            if (File.Exists(path))
+            {
+                // 檔名重複時附加序號避免覆蓋
+                path = Path.Combine(filesDir,
+                    Path.GetFileNameWithoutExtension(safeName) + "_" + index + Path.GetExtension(safeName));
+            }
+
+            await File.WriteAllTextAsync(path, content ?? string.Empty);
+        }
+    }
+
+    private static string SanitizeFileName(string? name, int index)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return $"file{index}.txt";
+        }
+
+        name = Path.GetFileName(name); // 去除任何目錄成分，防目錄穿越
+        foreach (var ch in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(ch, '_');
+        }
+
+        return string.IsNullOrWhiteSpace(name) ? $"file{index}.txt" : name;
     }
 
     #endregion

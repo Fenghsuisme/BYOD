@@ -7,8 +7,9 @@ obj/
 publish/
 out/
 
-# 執行期日誌（稽核用途，不進版控）
+# 執行期日誌與考試輸出（稽核/繳交用途，不進版控）
 logs/
+exams/
 
 # Monaco 本地資源（由 Scripts/fetch-monaco.ps1 取得，體積大不進版控）
 App/Assets/webapp/vs/*
