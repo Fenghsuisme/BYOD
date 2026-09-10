@@ -1,6 +1,6 @@
-name: Build (Windows + Linux)
+name: Build (Linux)
 
-# 驗證編譯與單元測試，並產出可下載的 Windows / Linux 綠色資料夾。
+# 驗證編譯與單元測試（考試碟部署採「整碟複製」，不在 CI 產出成品）。
 on:
   push:
     branches: ["**"]
@@ -8,54 +8,20 @@ on:
   workflow_dispatch:
 
 jobs:
-  # 可攜邏輯層單元測試（跨平台，跑一次即可）
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+
       - name: Test (Core)
         run: dotnet test tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj -c Release
 
-  # Avalonia + CEF 客戶端：Windows 與 Linux 各自打包
-  publish:
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-          - os: ubuntu-latest
-            rid: linux-x64
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
+      - name: Fetch Monaco
+        run: ./Scripts/fetch-monaco.sh
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      # 佈署 Monaco 本地資源（不外連 CDN；打包進成品）
-      - name: Fetch Monaco Editor
-        shell: pwsh
-        run: ./Scripts/fetch-monaco.ps1
-
-      # 自包含綠色資料夾（CEF 為多檔原生，不使用單一檔發佈）
-      - name: Publish
-        run: >
-          dotnet publish App/ByodKioskBrowser.App.csproj
-          -c Release
-          -r ${{ matrix.rid }}
-          --self-contained true
-          -o publish
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ByodKioskBrowser-${{ matrix.rid }}
-          path: publish/**
-          if-no-files-found: error
-          retention-days: 14
+      - name: Build App
+        run: dotnet build App/ByodKioskBrowser.App.csproj -c Release

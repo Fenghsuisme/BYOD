@@ -47,46 +47,35 @@ BYOD/
 │       └── vs/                        # ← 需放入 Monaco min/vs（見下方）
 ├── Core/                             # 可攜邏輯層（net8.0，無 UI）
 │   ├── Interfaces/ Models/ Services/  # 白名單、事件偵測、模型
-├── tests/ByodKioskBrowser.Tests/     # xUnit 測試（跨平台）
-└── Scripts/fetch-monaco.ps1          # 下載並佈署 Monaco（Windows/Linux/macOS 皆可用 pwsh）
+├── tests/ByodKioskBrowser.Tests/     # xUnit 測試
+├── run.sh                            # 啟動器（dotnet run）
+└── Scripts/
+    ├── setup-exam.sh                  # 一鍵建置考試環境碟（SDK/依賴/Monaco/建置/EXAM 圖示）
+    ├── install-linux-deps.sh          # 安裝 CEF 系統函式庫 + g++
+    ├── install-shortcut.sh            # 建立桌面 EXAM 圖示
+    └── fetch-monaco.sh                # 下載並佈署 Monaco
 ```
 
-## 建置步驟
+## 部署：考試環境碟（Linux）
 
-### 1. 佈署 Monaco 本地資源（各平台皆須先做）
+做法為「**先弄好一隻黃金環境碟，之後整碟複製**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證）。
+
+### 一鍵建置（在黃金碟上跑一次）
 ```bash
-pwsh Scripts/fetch-monaco.ps1          # Linux/macOS（需安裝 PowerShell）
-# 或 Windows：powershell -ExecutionPolicy Bypass -File Scripts\fetch-monaco.ps1
+cd ~/BYOD
+./Scripts/setup-exam.sh
 ```
+會自動完成：安裝 .NET 8 SDK（若無）→ 安裝 CEF 系統函式庫與 g++ → 佈署 Monaco 並預先建置（還原 CEF 套件）→ 桌面建立 **EXAM** 圖示。
 
-### 2. 發佈綠色資料夾
-```bash
-# Windows x64
-dotnet publish App/ByodKioskBrowser.App.csproj -c Release -r win-x64 --self-contained true -o publish-win
+完成後，桌面雙擊 **EXAM** 即可開始考試。之後**整碟完整複製**，所有複本開箱即用（環境已內含、免再下載）。
 
-# Linux x64
-dotnet publish App/ByodKioskBrowser.App.csproj -c Release -r linux-x64 --self-contained true -o publish-linux
-```
-輸出資料夾即綠色可攜版（含 CEF 原生檔與 `Assets/`）。整包拷到考試機執行。
+> 考試機需有網路以安裝系統依賴（走 apt/dnf/pacman）。
+> CEF 在 Linux 以免 root 的 `NoSandbox` 執行；Wayland 下無法硬鎖 Alt+Tab（見上方強度表）。
 
-> CI（GitHub Actions）已自動為 Windows / Linux 各產出成品，可從 Actions → Artifacts 下載。
-
-### 在 Linux 上執行（重要）
-
-CEF/Chromium 在 Linux 需要系統函式庫，且以免 root 的 `NoSandbox` 模式執行。
-**最簡單的方式**：直接下載 CI 的 `ByodKioskBrowser-linux-x64` 成品（已含 Monaco），然後：
-
-```bash
-# 1) 安裝 CEF 執行期依賴（apt / dnf / pacman 皆支援）
-sudo ./Scripts/install-linux-deps.sh
-
-# 2) 進入成品資料夾並啟動（把 run-linux.sh 一併放進去）
-./run-linux.sh            # 或 BYOD_DEBUG=1 ./run-linux.sh 觀看除錯輸出
-```
-
-- **Wayland**：`run-linux.sh` 會自動改走 XWayland（`GDK_BACKEND=x11`）以取得較佳相容性。
-- 若啟動即崩潰，多半是**缺系統庫**；用 `BYOD_DEBUG=1 ./run-linux.sh` 看缺哪個 `.so`，再補裝。
-- 若要自行在 Linux 建置（而非用 CI 成品），需先裝 .NET 8 SDK，並用 `./Scripts/fetch-monaco.sh` 佈署 Monaco（純 bash，不需 pwsh）。
+### 除錯
+- 一般啟動：`./run.sh`（離開：`Ctrl+Alt+Shift+Q` 或右上「結束考試」）
+- 視窗模式（有邊框方便觀察）：`BYOD_WINDOWED=1 ./run.sh`
+- 終端輸出會同時寫入 `logs/terminal_<時間>.log`
 
 ## 在 macOS 上開發
 
@@ -111,14 +100,15 @@ dotnet test  tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj   # 邏�
 | 本地 Monaco + 雙向同步 | `app.js` ↔ `EditorBridge`（`RegisterJavascriptObject` / `ExecuteJavaScript`） |
 | 封鎖外部剪貼簿貼入 | `app.js` 剪貼簿隔離（攔截原生 copy/cut/paste/drop） |
 | 本地資源不外連 CDN | `app://` 自訂 scheme（`LocalAssetSchemeHandlerFactory`） |
-| 結構化 JSON 事件日誌 | `CheatingDetector` → `logs/events_*.json` |
+| 結構化 JSON 事件日誌 | `CheatingDetector` → `exams/<日期>/events.json` |
 | 零系統破壞 / 零殘留 | asInvoker manifest + CEF 快取導向 TEMP，關閉時 `CefRuntime.Shutdown()` + 刪除 |
 
 ## 操作說明
 
+- **結束考試**：右上「結束考試」→ 確認 → 存所有分頁檔案與紀錄至本場資料夾後關閉。
 - **監考人員離開**：`Ctrl + Alt + Shift + Q`（記錄並導出日誌後關閉）。
 - 其他關閉方式會被攔截，維持 Kiosk 封閉狀態。
-- 稽核日誌輸出於執行檔旁的 `logs/`（即時 `.jsonl` + 關閉時完整 `.json`）。
+- 每場考試輸出於 `exams/<日期>/`：`events.jsonl`/`events.json`（紀錄）與 `files/`（各分頁）。
 
 ## 白名單網域
 
