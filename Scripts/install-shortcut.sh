@@ -23,12 +23,12 @@ write_shortcut() {
     cat > "$target" <<EOF
 [Desktop Entry]
 Type=Application
-Name=BYOD 防弊瀏覽器
+Name=EXAM
 Comment=競賽防弊瀏覽器（Kiosk）
 Exec=bash -lc "cd '$PROJECT_ROOT' && ./run.sh"
 Path=$PROJECT_ROOT
 Terminal=true
-Icon=utilities-terminal
+Icon=$PROJECT_ROOT/App/Assets/exam-icon.svg
 Categories=Education;
 EOF
     chmod +x "$target"
@@ -40,14 +40,14 @@ EOF
 DESKTOP_DIR="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
 [[ -z "${DESKTOP_DIR:-}" ]] && DESKTOP_DIR="$HOME/Desktop"
 mkdir -p "$DESKTOP_DIR"
-write_shortcut "$DESKTOP_DIR/BYOD.desktop"
+write_shortcut "$DESKTOP_DIR/EXAM.desktop"
 
-# 應用程式清單（Activities 搜尋 BYOD 可開）
-write_shortcut "$HOME/.local/share/applications/BYOD.desktop"
+# 應用程式清單（Activities 搜尋 EXAM 可開）
+write_shortcut "$HOME/.local/share/applications/EXAM.desktop"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 
 echo "完成。"
-echo "  桌面捷徑：$DESKTOP_DIR/BYOD.desktop"
+echo "  桌面捷徑：$DESKTOP_DIR/EXAM.desktop"
 echo "  指向專案：$PROJECT_ROOT"
 echo ""
 echo "若桌面圖示仍顯示未信任，於圖示上按右鍵 → 允許執行（Allow Launching）。"
