@@ -12,8 +12,9 @@
 #
 set -euo pipefail
 
-# 切到專案根目錄（腳本所在位置）
-cd "$(dirname "${BASH_SOURCE[0]}")"
+# 切到專案根目錄（解析符號連結，允許從桌面捷徑呼叫）
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+cd "$(dirname "$SELF")"
 
 # 確保 dotnet 在 PATH（dotnet-install.sh 預設裝於 ~/.dotnet）
 if ! command -v dotnet >/dev/null 2>&1; then
