@@ -19,3 +19,6 @@ App/Assets/webapp/vs/*
 .vs/
 .idea/
 *.suo
+
+# 發佈輸出
+dist/
