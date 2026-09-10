@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=BYOD 防弊瀏覽器
+Comment=競賽防弊瀏覽器（Kiosk）
+Exec=bash -lc "cd \"$HOME/BYOD\" && ./run.sh"
+Terminal=true
+Icon=utilities-terminal
+Categories=Education;

@@ -45,5 +45,12 @@ if ! command -v g++ >/dev/null 2>&1; then
     fi
 fi
 
+# 終端輸出（含 CEF 原生訊息）同時記錄到 logs/terminal_<時間>.log
+mkdir -p logs
+LOG="logs/terminal_$(date +%Y-%m-%d_%H-%M-%S).log"
 echo "啟動中…（離開：Ctrl+Alt+Shift+Q 或右上「結束考試」）"
-exec dotnet run --project App/ByodKioskBrowser.App.csproj "$@"
+echo "終端輸出將同時記錄到：$LOG"
+
+# 用 tee 同時輸出到畫面與檔案；保留 dotnet run 的結束碼
+set -o pipefail
+dotnet run --project App/ByodKioskBrowser.App.csproj "$@" 2>&1 | tee "$LOG"
