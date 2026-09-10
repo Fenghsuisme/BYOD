@@ -143,67 +143,66 @@ public sealed class CodeRunnerService
         public long ElapsedMs { get; init; }
     }
 
-    private static async Task<ProcessOutcome> RunProcessAsync(
+    // 以同步輪詢式等待（WaitForExit(ms)），在較新的 Linux 上比 WaitForExitAsync 可靠；
+    // 於背景執行緒執行，阻塞不影響 UI。
+    private static Task<ProcessOutcome> RunProcessAsync(
         string fileName, string arguments, string workDir, string? stdin, int timeoutMs)
     {
-        var psi = new ProcessStartInfo
+        return Task.Run(() =>
         {
-            FileName = fileName,
-            Arguments = arguments,
-            WorkingDirectory = workDir,
-            RedirectStandardInput = stdin != null,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = new Process { StartInfo = psi };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data != null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data != null) stderr.AppendLine(e.Data); };
-
-        var sw = Stopwatch.StartNew();
-        process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        if (stdin != null)
-        {
-            try
+            var psi = new ProcessStartInfo
             {
-                await process.StandardInput.WriteAsync(stdin);
-                process.StandardInput.Close();
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workDir,
+                RedirectStandardInput = stdin != null,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process { StartInfo = psi };
+
+            var sw = Stopwatch.StartNew();
+            process.Start();
+
+            // 非同步讀到底，避免管線塞滿造成阻塞
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
+            if (stdin != null)
+            {
+                try
+                {
+                    process.StandardInput.Write(stdin);
+                    process.StandardInput.Close();
+                }
+                catch { /* 程式可能未讀 stdin 即結束 */ }
             }
-            catch { /* 程式可能未讀 stdin 即結束 */ }
-        }
 
-        using var cts = new CancellationTokenSource(timeoutMs);
-        var timedOut = false;
-        try
-        {
-            await process.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            timedOut = true;
-            try { process.Kill(entireProcessTree: true); } catch { }
-            try { await process.WaitForExitAsync(); } catch { }
-        }
-        sw.Stop();
+            var timedOut = false;
+            if (!process.WaitForExit(timeoutMs))
+            {
+                timedOut = true;
+                try { process.Kill(entireProcessTree: true); } catch { }
+                try { process.WaitForExit(2000); } catch { }
+            }
+            sw.Stop();
 
-        // 確保非同步輸出讀取完成
-        try { process.WaitForExit(500); } catch { }
+            string stdout = string.Empty, stderr = string.Empty;
+            try { if (stdoutTask.Wait(2000)) stdout = stdoutTask.Result; } catch { }
+            try { if (stderrTask.Wait(2000)) stderr = stderrTask.Result; } catch { }
 
-        return new ProcessOutcome
-        {
-            ExitCode = timedOut ? -1 : SafeExitCode(process),
-            Stdout = stdout.ToString(),
-            Stderr = stderr.ToString(),
-            TimedOut = timedOut,
-            ElapsedMs = sw.ElapsedMilliseconds
-        };
+            return new ProcessOutcome
+            {
+                ExitCode = timedOut ? -1 : SafeExitCode(process),
+                Stdout = stdout,
+                Stderr = stderr,
+                TimedOut = timedOut,
+                ElapsedMs = sw.ElapsedMilliseconds
+            };
+        });
     }
 
     private static int SafeExitCode(Process p)
