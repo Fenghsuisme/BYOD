@@ -15,13 +15,40 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(dirname "$(dirname "$SELF")")"
 cd "$ROOT"
 
+# 下載工具（curl 或 wget）；乾淨系統可能兩者皆無
+download() {
+    # download <URL> <輸出檔>
+    if command -v curl >/dev/null 2>&1; then
+        curl -sSL "$1" -o "$2"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$2" "$1"
+    else
+        return 1
+    fi
+}
+
+echo "==> (0/4) 基本工具（curl / ca-certificates）…"
+if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+        if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y curl ca-certificates
+        else
+            apt-get update && apt-get install -y curl ca-certificates
+        fi
+    else
+        echo "    找不到 curl/wget，且非 apt 系統；請先手動安裝 curl。" >&2
+        exit 1
+    fi
+fi
+
+echo ""
 echo "==> (1/4) 確認 .NET 8 SDK…"
 if ! command -v dotnet >/dev/null 2>&1; then
     if [[ -x "$HOME/.dotnet/dotnet" ]]; then
         export PATH="$HOME/.dotnet:$PATH"
     else
         echo "    安裝 .NET 8 SDK 到 ~/.dotnet …"
-        curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
+        download https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh
         bash /tmp/dotnet-install.sh --channel 8.0
         export PATH="$HOME/.dotnet:$PATH"
         grep -q '.dotnet' "$HOME/.bashrc" 2>/dev/null || \
