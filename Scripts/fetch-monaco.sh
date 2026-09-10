@@ -18,7 +18,16 @@ trap 'rm -rf "$TMP"' EXIT
 URL="https://registry.npmjs.org/monaco-editor/-/monaco-editor-$VERSION.tgz"
 echo "下載 Monaco Editor $VERSION ..."
 echo "  $URL"
-curl -fsSL "$URL" -o "$TMP/monaco.tgz"
+
+# curl 或 wget 皆可
+if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$URL" -o "$TMP/monaco.tgz"
+elif command -v wget >/dev/null 2>&1; then
+    wget -qO "$TMP/monaco.tgz" "$URL"
+else
+    echo "找不到 curl 或 wget，無法下載。" >&2
+    exit 1
+fi
 
 echo "解壓中 ..."
 tar -xzf "$TMP/monaco.tgz" -C "$TMP"
