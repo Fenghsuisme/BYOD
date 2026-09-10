@@ -73,13 +73,16 @@ public sealed class CodeRunnerService
 
             // ---- 編譯 ----
             var compileArgs = $"-O2 {std} -o \"{exePath}\" \"{srcPath}\"";
+            Console.WriteLine($"[BYOD-run] 編譯：{compiler} {compileArgs}");
             ProcessOutcome compile;
             try
             {
                 compile = await RunProcessAsync(compiler, compileArgs, workDir, stdin: null, _compileTimeoutMs);
+                Console.WriteLine($"[BYOD-run] 編譯結束 exit={compile.ExitCode} timedOut={compile.TimedOut}");
             }
             catch (System.ComponentModel.Win32Exception)
             {
+                Console.WriteLine($"[BYOD-run] 找不到編譯器 {compiler}");
                 return new RunResult
                 {
                     Ok = false,
@@ -106,7 +109,9 @@ public sealed class CodeRunnerService
             }
 
             // ---- 執行 ----
+            Console.WriteLine($"[BYOD-run] 執行：{exePath}");
             var run = await RunProcessAsync(exePath, string.Empty, workDir, stdin ?? string.Empty, _runTimeoutMs);
+            Console.WriteLine($"[BYOD-run] 執行結束 exit={run.ExitCode} timedOut={run.TimedOut} timeMs={run.ElapsedMs}");
             return new RunResult
             {
                 Ok = !run.TimedOut && run.ExitCode == 0,

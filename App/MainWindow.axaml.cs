@@ -270,6 +270,7 @@ public partial class MainWindow : Window
     /// <summary>編譯 / 執行完成 → 把結果 JSON 推回編輯器頁面顯示。</summary>
     private void OnRunCompleted(string json)
     {
+        Console.WriteLine("[BYOD-run] 推回頁面 __runResult");
         Dispatcher.UIThread.Post(() =>
         {
             _editorBrowser?.ExecuteJavaScript($"window.__runResult && window.__runResult({JsString(json)})");

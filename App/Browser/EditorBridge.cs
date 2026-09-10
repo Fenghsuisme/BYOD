@@ -44,6 +44,7 @@ public sealed class EditorBridge
     /// </summary>
     public void runCode(string language, string code, string stdin)
     {
+        Console.WriteLine($"[BYOD-run] runCode 進入：lang={language} codeLen={(code?.Length ?? 0)} stdinLen={(stdin?.Length ?? 0)}");
         _ = Task.Run(async () =>
         {
             string json;
@@ -57,6 +58,7 @@ public sealed class EditorBridge
                 json = new RunResult { Ok = false, Phase = "error", Message = "執行器例外：" + ex.Message }.ToJson();
             }
 
+            Console.WriteLine($"[BYOD-run] runCode 完成，推回結果（{json.Length} 字元）");
             RunCompleted?.Invoke(json);
         });
     }

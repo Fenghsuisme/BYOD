@@ -80,7 +80,16 @@
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, internalCut);
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, internalPaste);
 
+        // 輸入(stdin)/輸出面板允許正常複製貼上（要貼測資）；只有程式碼編輯器做剪貼簿隔離
+        function inIoPanel(e) {
+            var t = e.target;
+            if (!t) { return false; }
+            if (t.id === "stdin" || t.id === "output") { return true; }
+            return !!(t.closest && t.closest("#runner"));
+        }
+
         function blockNativeClipboard(e, kind) {
+            if (inIoPanel(e)) { return; } // 面板放行
             e.preventDefault();
             e.stopPropagation();
             if (kind === "paste") {
@@ -97,9 +106,14 @@
         document.addEventListener("copy", function (e) { blockNativeClipboard(e, "copy"); }, true);
         document.addEventListener("cut", function (e) { blockNativeClipboard(e, "cut"); }, true);
 
-        function blockDrag(e) { e.preventDefault(); e.stopPropagation(); }
+        function blockDrag(e) {
+            if (inIoPanel(e)) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+        }
         document.addEventListener("dragover", blockDrag, true);
         document.addEventListener("drop", function (e) {
+            if (inIoPanel(e)) { return; }
             blockDrag(e);
             notifyCheat("external-drop-blocked");
         }, true);
@@ -303,10 +317,10 @@
                 return;
             }
 
-            // 安全逾時：萬一未收到回傳也解鎖（C# 執行 timeout 5s，這裡放寬到 30s）
+            // 安全逾時：萬一未收到回傳也解鎖（放寬到 60s）
             runTimeout = setTimeout(function () {
                 if (running) { finishRun(); setOutput("執行逾時，未收到結果。", "error"); }
-            }, 30000);
+            }, 60000);
         }
 
         // 供 C# 端呼叫：接收編譯 / 執行結果
