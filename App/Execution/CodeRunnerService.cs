@@ -78,7 +78,6 @@ public sealed class CodeRunnerService
             try
             {
                 compile = await RunProcessAsync(compiler, compileArgs, workDir, stdin: null, _compileTimeoutMs);
-                Console.WriteLine($"[BYOD-run] 編譯結束 exit={compile.ExitCode} timedOut={compile.TimedOut}");
             }
             catch (System.ComponentModel.Win32Exception)
             {
@@ -91,17 +90,20 @@ public sealed class CodeRunnerService
                 };
             }
 
-            if (compile.TimedOut)
+            // 以「執行檔是否產生」判定編譯成功，不依賴 exit code（CEF 併存時 exit 偵測不可靠）
+            var compiled = File.Exists(exePath);
+            Console.WriteLine($"[BYOD-run] 編譯結束 timedOut={compile.TimedOut} 產生執行檔={compiled}");
+
+            if (!compiled)
             {
-                return new RunResult { Ok = false, Phase = "compile", TimedOut = true, Message = "編譯逾時。" };
-            }
-            if (compile.ExitCode != 0)
-            {
+                if (compile.TimedOut)
+                {
+                    return new RunResult { Ok = false, Phase = "compile", TimedOut = true, Message = "編譯逾時。", Stderr = compile.Stderr };
+                }
                 return new RunResult
                 {
                     Ok = false,
                     Phase = "compile",
-                    ExitCode = compile.ExitCode,
                     Stderr = compile.Stderr,
                     Stdout = compile.Stdout,
                     Message = "編譯錯誤。"
@@ -114,7 +116,7 @@ public sealed class CodeRunnerService
             Console.WriteLine($"[BYOD-run] 執行結束 exit={run.ExitCode} timedOut={run.TimedOut} timeMs={run.ElapsedMs}");
             return new RunResult
             {
-                Ok = !run.TimedOut && run.ExitCode == 0,
+                Ok = !run.TimedOut,
                 Phase = "run",
                 Stdout = run.Stdout,
                 Stderr = run.Stderr,
@@ -143,12 +145,13 @@ public sealed class CodeRunnerService
         public long ElapsedMs { get; init; }
     }
 
-    // 以同步輪詢式等待（WaitForExit(ms)），在較新的 Linux 上比 WaitForExitAsync 可靠；
-    // 於背景執行緒執行，阻塞不影響 UI。
+    // 以「輸出管線關閉(EOF)」作為行程完成訊號，而非仰賴行程結束偵測。
+    // 因為與 CEF 併存時，CEF 可能攔截 SIGCHLD 回收子行程，使 WaitForExit(Async) 永遠等不到；
+    // 但子行程結束時核心會關閉其 stdout/stderr 管線，ReadToEndAsync 便會完成。
     private static Task<ProcessOutcome> RunProcessAsync(
         string fileName, string arguments, string workDir, string? stdin, int timeoutMs)
     {
-        return Task.Run(() =>
+        return Task.Run(async () =>
         {
             var psi = new ProcessStartInfo
             {
@@ -167,7 +170,6 @@ public sealed class CodeRunnerService
             var sw = Stopwatch.StartNew();
             process.Start();
 
-            // 非同步讀到底，避免管線塞滿造成阻塞
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
@@ -175,28 +177,32 @@ public sealed class CodeRunnerService
             {
                 try
                 {
-                    process.StandardInput.Write(stdin);
+                    await process.StandardInput.WriteAsync(stdin);
                     process.StandardInput.Close();
                 }
                 catch { /* 程式可能未讀 stdin 即結束 */ }
             }
 
-            var timedOut = false;
-            if (!process.WaitForExit(timeoutMs))
+            // 等兩條輸出管線都 EOF（= 行程已結束）；逾時則強制結束
+            var ioTask = Task.WhenAll(stdoutTask, stderrTask);
+            var completed = await Task.WhenAny(ioTask, Task.Delay(timeoutMs));
+            var timedOut = completed != ioTask;
+            if (timedOut)
             {
-                timedOut = true;
                 try { process.Kill(entireProcessTree: true); } catch { }
-                try { process.WaitForExit(2000); } catch { }
+                try { await ioTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { }
             }
             sw.Stop();
 
-            string stdout = string.Empty, stderr = string.Empty;
-            try { if (stdoutTask.Wait(2000)) stdout = stdoutTask.Result; } catch { }
-            try { if (stderrTask.Wait(2000)) stderr = stderrTask.Result; } catch { }
+            var stdout = stdoutTask.IsCompletedSuccessfully ? stdoutTask.Result : string.Empty;
+            var stderr = stderrTask.IsCompletedSuccessfully ? stderrTask.Result : string.Empty;
+
+            var exitCode = -1;
+            try { if (process.HasExited) exitCode = process.ExitCode; } catch { /* 可能已被 CEF 回收 */ }
 
             return new ProcessOutcome
             {
-                ExitCode = timedOut ? -1 : SafeExitCode(process),
+                ExitCode = timedOut ? -1 : exitCode,
                 Stdout = stdout,
                 Stderr = stderr,
                 TimedOut = timedOut,
@@ -205,8 +211,4 @@ public sealed class CodeRunnerService
         });
     }
 
-    private static int SafeExitCode(Process p)
-    {
-        try { return p.ExitCode; } catch { return -1; }
-    }
 }
