@@ -32,6 +32,8 @@
     require.config({ paths: { vs: "vs" } });
 
     require(["vs/editor/editor.main"], function () {
+        registerCppCompletions();
+
         var editor = monaco.editor.create(document.getElementById("editor"), {
             model: null,
             theme: "vs-dark",
@@ -40,7 +42,13 @@
             minimap: { enabled: false },
             contextmenu: false,
             scrollBeyondLastLine: false,
-            renderWhitespace: "selection"
+            renderWhitespace: "selection",
+            // 補全：Tab 接受、輸入即建議、把文件內出現過的字（含自訂命名）納入建議
+            tabCompletion: "on",
+            suggestOnTriggerCharacters: true,
+            quickSuggestions: { other: true, comments: false, strings: false },
+            wordBasedSuggestions: "currentDocument",
+            suggestSelection: "first"
         });
 
         // ================= 剪貼簿隔離 =================
@@ -334,7 +342,143 @@
         runBtn.addEventListener("click", runCode);
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);
 
+        // ================= 面板可拖曳調整大小 =================
+        setupResizers();
+
+        function setupResizers() {
+            var runner = document.getElementById("runner");
+            var stdinCol = document.getElementById("stdin-col");
+
+            // 垂直：編輯器 ↔ 輸出區（調整 runner 高度）
+            makeDrag(document.getElementById("v-splitter"), function (e, start) {
+                var dy = start.y - e.clientY; // 往上拖 → 輸出區變高
+                var h = clamp(start.h + dy, 80, window.innerHeight - 160);
+                runner.style.flex = "0 0 " + h + "px";
+            }, function () {
+                return { y: 0, h: runner.getBoundingClientRect().height };
+            });
+
+            // 水平：輸入 ↔ 輸出（調整 stdin 欄寬度）
+            makeDrag(document.getElementById("h-splitter"), function (e, start) {
+                var dx = e.clientX - start.x;
+                var w = clamp(start.w + dx, 80, runner.getBoundingClientRect().width - 120);
+                stdinCol.style.flex = "0 0 " + w + "px";
+            }, function () {
+                return { x: 0, w: stdinCol.getBoundingClientRect().width };
+            });
+        }
+
+        function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+        function makeDrag(handle, onMove, getStart) {
+            if (!handle) { return; }
+            handle.addEventListener("pointerdown", function (e) {
+                e.preventDefault();
+                var start = getStart();
+                start.x = e.clientX;
+                start.y = e.clientY;
+                handle.setPointerCapture(e.pointerId);
+                function move(ev) { onMove(ev, start); }
+                function up() {
+                    try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+                    document.removeEventListener("pointermove", move);
+                    document.removeEventListener("pointerup", up);
+                }
+                document.addEventListener("pointermove", move);
+                document.addEventListener("pointerup", up);
+            });
+        }
+
         // 通知 C# 編輯器已就緒
         notifyReady();
     });
+
+    // ================= C / C++ 輕量語法補全 =================
+    function registerCppCompletions() {
+        if (typeof monaco === "undefined" || registerCppCompletions._done) { return; }
+        registerCppCompletions._done = true;
+
+        var K = monaco.languages.CompletionItemKind;
+        var SNIPPET = monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet;
+
+        var cKeywords = ["int", "char", "short", "long", "float", "double", "void", "unsigned",
+            "signed", "const", "static", "extern", "struct", "union", "enum", "typedef", "sizeof",
+            "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
+            "return", "goto", "NULL"];
+        var cppKeywords = ["bool", "true", "false", "class", "struct", "public", "private", "protected",
+            "namespace", "using", "template", "typename", "this", "new", "delete", "virtual", "override",
+            "nullptr", "auto", "try", "catch", "throw", "operator", "friend", "inline", "explicit",
+            "constexpr", "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast"];
+        var cLib = ["printf", "scanf", "puts", "gets", "getchar", "putchar", "malloc", "calloc",
+            "realloc", "free", "memset", "memcpy", "memmove", "strlen", "strcmp", "strncmp", "strcpy",
+            "strncpy", "strcat", "strstr", "atoi", "atof", "abs", "labs", "pow", "sqrt", "ceil",
+            "floor", "fabs", "rand", "srand", "qsort", "fopen", "fclose", "fscanf", "fprintf", "EOF"];
+        var cppLib = ["std", "cout", "cin", "cerr", "endl", "string", "vector", "map", "unordered_map",
+            "set", "unordered_set", "pair", "queue", "stack", "priority_queue", "sort", "reverse",
+            "max", "min", "swap", "make_pair", "to_string", "stoi", "stod", "push_back", "pop_back",
+            "size", "empty", "begin", "end", "front", "back", "find", "insert", "erase", "count",
+            "substr", "length", "first", "second"];
+        var headers = ["#include <iostream>", "#include <vector>", "#include <string>",
+            "#include <algorithm>", "#include <map>", "#include <set>", "#include <queue>",
+            "#include <cmath>", "#include <cstdio>", "#include <cstring>", "#include <cstdlib>",
+            "#include <stdio.h>", "#include <stdlib.h>", "#include <string.h>", "#include <math.h>"];
+
+        function items(list, kind, range) {
+            return list.map(function (w) {
+                return { label: w, kind: kind, insertText: w, range: range };
+            });
+        }
+
+        function snippets(range, isCpp) {
+            var s = [
+                { label: "for", detail: "for 迴圈", insertText: "for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t$0\n}" },
+                { label: "while", detail: "while 迴圈", insertText: "while (${1:cond}) {\n\t$0\n}" },
+                { label: "if", detail: "if", insertText: "if (${1:cond}) {\n\t$0\n}" }
+            ];
+            if (isCpp) {
+                s.push({ label: "main", detail: "C++ main", insertText: "int main() {\n\t$0\n\treturn 0;\n}" });
+                s.push({ label: "cout", detail: "輸出", insertText: "std::cout << ${1:x} << std::endl;$0" });
+                s.push({ label: "cin", detail: "輸入", insertText: "std::cin >> ${1:x};$0" });
+                s.push({ label: "class", detail: "類別", insertText: "class ${1:Name} {\npublic:\n\t$0\n};" });
+            } else {
+                s.push({ label: "main", detail: "C main", insertText: "int main() {\n\t$0\n\treturn 0;\n}" });
+                s.push({ label: "printf", detail: "輸出", insertText: "printf(\"${1:%d}\\n\", ${2:x});$0" });
+                s.push({ label: "scanf", detail: "輸入", insertText: "scanf(\"${1:%d}\", &${2:x});$0" });
+            }
+            return s.map(function (x) {
+                return {
+                    label: x.label, kind: monaco.languages.CompletionItemKind.Snippet,
+                    detail: x.detail, insertText: x.insertText,
+                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                    range: range
+                };
+            });
+        }
+
+        function provider(isCpp) {
+            return {
+                provideCompletionItems: function (model, position) {
+                    var word = model.getWordUntilPosition(position);
+                    var range = {
+                        startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+                        startColumn: word.startColumn, endColumn: word.endColumn
+                    };
+                    var sug = []
+                        .concat(items(cKeywords, K.Keyword, range))
+                        .concat(items(cLib, K.Function, range))
+                        .concat(items(headers, K.Module, range))
+                        .concat(snippets(range, isCpp));
+                    if (isCpp) {
+                        sug = sug
+                            .concat(items(cppKeywords, K.Keyword, range))
+                            .concat(items(cppLib, K.Function, range));
+                    }
+                    return { suggestions: sug };
+                }
+            };
+        }
+
+        monaco.languages.registerCompletionItemProvider("c", provider(false));
+        monaco.languages.registerCompletionItemProvider("cpp", provider(true));
+    }
 })();

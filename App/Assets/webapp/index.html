@@ -28,12 +28,15 @@
 
     <div id="editor"></div>
 
+    <div id="v-splitter" title="拖曳調整 編輯器 / 輸出區 高度"></div>
+
     <div id="runner">
-        <div class="io-col">
+        <div class="io-col" id="stdin-col">
             <div class="io-label">輸入 (stdin)</div>
             <textarea id="stdin" spellcheck="false" placeholder="在此貼上測資，執行時作為程式的標準輸入"></textarea>
         </div>
-        <div class="io-col">
+        <div id="h-splitter" title="拖曳調整 輸入 / 輸出 寬度"></div>
+        <div class="io-col" id="output-col">
             <div class="io-label">輸出</div>
             <pre id="output"></pre>
         </div>

@@ -122,11 +122,27 @@ body {
     min-height: 0;
 }
 
+/* 可拖曳分隔線 */
+#v-splitter {
+    flex: 0 0 6px;
+    height: 6px;
+    background: #2d2d30;
+    cursor: row-resize;
+}
+
+#h-splitter {
+    flex: 0 0 6px;
+    width: 6px;
+    background: #2d2d30;
+    cursor: col-resize;
+}
+
+#v-splitter:hover, #h-splitter:hover { background: #0e639c; }
+
 /* 底部執行面板 */
 #runner {
     flex: 0 0 220px;
     display: flex;
-    border-top: 1px solid #3e3e42;
     background: #1e1e1e;
 }
 
@@ -135,10 +151,7 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 0;
-    border-right: 1px solid #2d2d30;
 }
-
-.io-col:last-child { border-right: none; }
 
 .io-label {
     flex: 0 0 22px;
