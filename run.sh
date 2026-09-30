@@ -45,6 +45,10 @@ if ! command -v g++ >/dev/null 2>&1; then
     fi
 fi
 
+# 鎖定 GNOME 逃脫快速鍵（Alt+F4 / Alt+Tab / Super）；結束（含當機/Ctrl+C）時還原
+./Scripts/desktop-lock.sh lock || true
+trap './Scripts/desktop-lock.sh unlock || true' EXIT
+
 # 終端輸出（含 CEF 原生訊息）同時記錄到 logs/terminal_<時間>.log
 mkdir -p logs
 LOG="logs/terminal_$(date +%Y-%m-%d_%H-%M-%S).log"
