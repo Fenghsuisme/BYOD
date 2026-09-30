@@ -17,6 +17,12 @@ public sealed class LocalAssetSchemeHandlerFactory : CefSchemeHandlerFactory
     /// <summary>編輯器起始頁的完整 URL。</summary>
     public static string EditorStartUrl => $"{Scheme}://{Host}/index.html";
 
+    /// <summary>題目 PDF 檢視頁的完整 URL。</summary>
+    public static string PdfViewerUrl => $"{Scheme}://{Host}/pdf.html";
+
+    /// <summary>已下載的題目 PDF 檔路徑（由 C# 設定）；app://local/exam.pdf 會回傳此檔。</summary>
+    public static string? PdfCachePath { get; set; }
+
     private static readonly string WebRoot =
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "Assets", "webapp"));
 
@@ -37,6 +43,27 @@ public sealed class LocalAssetSchemeHandlerFactory : CefSchemeHandlerFactory
         if (string.IsNullOrEmpty(relative))
         {
             relative = "index.html";
+        }
+
+        // 題目 PDF：從快取路徑（C# 下載的暫存檔）提供
+        if (relative == "exam.pdf")
+        {
+            if (!string.IsNullOrEmpty(PdfCachePath) && File.Exists(PdfCachePath))
+            {
+                handler.Status = 200;
+                handler.StatusText = "OK";
+                handler.MimeType = "application/pdf";
+                handler.Response = File.OpenRead(PdfCachePath);
+            }
+            else
+            {
+                // 尚未下載完成 → 404，pdf.html 會重試
+                handler.Status = 404;
+                handler.StatusText = "Not Ready";
+                handler.MimeType = "text/plain";
+                handler.Response = new MemoryStream(Array.Empty<byte>());
+            }
+            return handler;
         }
 
         var fullPath = Path.GetFullPath(Path.Combine(WebRoot, relative));

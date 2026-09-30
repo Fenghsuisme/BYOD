@@ -184,10 +184,23 @@ public partial class MainWindow : Window
                 _judgeBrowser?.ExecuteJavaScript(JudgeCopyListenerScript);
             }
         };
-        Console.WriteLine("[BYOD] 步驟2：設定 judge Address…");
-        _judgeBrowser.Address = JudgeStartUrl;
-        JudgeHost.Child = _judgeBrowser;
-        Console.WriteLine("[BYOD] 步驟3：judge 瀏覽器已就緒。");
+        // 依模式決定左側內容：judge（程式設計）或 題目 PDF（OOP/資料結構）
+        var mode = Environment.GetEnvironmentVariable("BYOD_MODE") ?? "judge";
+        if (mode == "pdf")
+        {
+            Console.WriteLine("[BYOD] 步驟2：PDF 模式，載入題目檢視器…");
+            _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.PdfViewerUrl;
+            JudgeHost.Child = _judgeBrowser;
+            StartExamPdfDownload();
+            Console.WriteLine("[BYOD] 步驟3：PDF 檢視器已載入（背景下載題目）。");
+        }
+        else
+        {
+            Console.WriteLine("[BYOD] 步驟2：設定 judge Address…");
+            _judgeBrowser.Address = JudgeStartUrl;
+            JudgeHost.Child = _judgeBrowser;
+            Console.WriteLine("[BYOD] 步驟3：judge 瀏覽器已就緒。");
+        }
 
         if (oneBrowser)
         {
@@ -262,6 +275,31 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() =>
         {
             _editorBrowser?.ExecuteJavaScript($"window.__setClipboard && window.__setClipboard({JsString(text)})");
+        });
+    }
+
+    /// <summary>PDF 模式：背景由 Google Drive 下載題目 PDF，完成後設定快取路徑供 app://local/exam.pdf 提供。</summary>
+    private void StartExamPdfDownload()
+    {
+        var id = Environment.GetEnvironmentVariable("BYOD_PDF_ID");
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            Console.WriteLine("[BYOD] 未設定 BYOD_PDF_ID（請在專案根目錄的 pdf-id.txt 填入 Drive 檔案 ID）。");
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var path = await PdfService.DownloadDrivePdfAsync(id.Trim());
+                LocalAssetSchemeHandlerFactory.PdfCachePath = path;
+                Console.WriteLine($"[BYOD] 題目 PDF 已下載：{path}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[BYOD] 題目 PDF 下載失敗：" + ex.Message);
+            }
         });
     }
 

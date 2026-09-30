@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;" />
+    <title>題目 PDF</title>
+    <style>
+        html, body { height: 100%; margin: 0; background: #525659; color: #ddd;
+            font-family: "Segoe UI", "Microsoft JhengHei", sans-serif; }
+        #bar { height: 32px; line-height: 32px; padding: 0 12px; background: #323639;
+            color: #eee; font-size: 13px; }
+        #pages { position: absolute; top: 32px; left: 0; right: 0; bottom: 0;
+            overflow: auto; text-align: center; }
+        #pages canvas { display: block; margin: 10px auto; background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,.5); max-width: 100%; }
+        #msg { padding: 24px; text-align: center; color: #ccc; }
+    </style>
+</head>
+<body>
+    <div id="bar">題目 PDF</div>
+    <div id="pages"><div id="msg">正在載入題目 PDF…</div></div>
+
+    <script src="pdfjs/pdf.min.js"></script>
+    <script>
+        (function () {
+            var msgEl = document.getElementById("msg");
+            var pagesEl = document.getElementById("pages");
+
+            if (typeof pdfjsLib === "undefined") {
+                msgEl.textContent = "找不到 pdf.js（請執行 Scripts/fetch-pdfjs.sh 佈署）。";
+                return;
+            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = "pdfjs/pdf.worker.min.js";
+
+            function render(pdf) {
+                if (msgEl && msgEl.parentNode) { msgEl.parentNode.removeChild(msgEl); }
+                var scale = 1.5;
+                var chain = Promise.resolve();
+                for (var i = 1; i <= pdf.numPages; i++) {
+                    (function (n) {
+                        chain = chain.then(function () {
+                            return pdf.getPage(n).then(function (page) {
+                                var vp = page.getViewport({ scale: scale });
+                                var canvas = document.createElement("canvas");
+                                canvas.width = vp.width;
+                                canvas.height = vp.height;
+                                pagesEl.appendChild(canvas);
+                                return page.render({
+                                    canvasContext: canvas.getContext("2d"),
+                                    viewport: vp
+                                }).promise;
+                            });
+                        });
+                    })(i);
+                }
+            }
+
+            var tries = 0;
+            function load() {
+                tries++;
+                pdfjsLib.getDocument("exam.pdf").promise.then(render).catch(function () {
+                    if (tries < 60) {
+                        msgEl.textContent = "正在下載題目 PDF…（" + tries + "）";
+                        setTimeout(load, 1000);
+                    } else {
+                        msgEl.textContent = "題目 PDF 載入失敗，請通知監考人員。";
+                    }
+                });
+            }
+            load();
+        })();
+    </script>
+</body>
+</html>

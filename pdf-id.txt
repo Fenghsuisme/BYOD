@@ -1,0 +1,12 @@
+# 題目 PDF 設定（OOP / 資料結構 模式）
+#
+# 在下方（去掉註解）填入題目 PDF 的 Google Drive「檔案 ID」。
+# 該檔案需設為「知道連結的人可以檢視」（公開，不需登入）。
+#
+# 分享連結範例：
+#   https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view
+# 其中的  1AbCdEfGhIjKlMnOpQrStUvWxYz  就是「檔案 ID」，把它填在下一行：
+#
+# 1AbCdEfGhIjKlMnOpQrStUvWxYz
+#
+# 換題目時：在 Drive 用「管理版本」替換同一檔案內容即可，ID 不變。

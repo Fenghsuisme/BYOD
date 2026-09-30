@@ -33,6 +33,12 @@ if [[ ! -f "App/Assets/webapp/vs/loader.js" ]]; then
     ./Scripts/fetch-monaco.sh
 fi
 
+# 題目 PDF 的 Google Drive 檔案 ID（PDF 模式用）；pdf-id.txt 內第一個非註解行
+if [[ -f "pdf-id.txt" ]]; then
+    PDF_ID="$(grep -vE '^\s*#' pdf-id.txt | head -n1 | tr -d '[:space:]')"
+    [[ -n "$PDF_ID" ]] && export BYOD_PDF_ID="$PDF_ID"
+fi
+
 # 確保 C/C++ 編譯器存在，否則編輯器的「▶ 執行」無法編譯。
 # 注意：Linux 用的是 g++ / gcc（build-essential）；MinGW 是「Windows 版 gcc」，
 # 僅在 Windows 上部署時才需要，Linux 用不到。

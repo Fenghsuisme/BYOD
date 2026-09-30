@@ -66,8 +66,9 @@ else
 fi
 
 echo ""
-echo "==> (3/4) Monaco + 預先建置（還原 CEF 套件）…"
+echo "==> (3/4) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
 [[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
+[[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
 dotnet build App/ByodKioskBrowser.App.csproj -c Debug
 
 echo ""
