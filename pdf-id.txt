@@ -1,12 +1,8 @@
-# 題目 PDF 設定（OOP / 資料結構 模式）
+# 題目 PDF 來源（OOP / 資料結構 模式）
 #
-# 在下方（去掉註解）填入題目 PDF 的 Google Drive「檔案 ID」。
-# 該檔案需設為「知道連結的人可以檢視」（公開，不需登入）。
+# 貼上 Google Drive 的「資料夾」或「檔案」分享連結。
+# 需設為「知道連結的人可以檢視」（公開，不需登入）。
+# 資料夾模式：以後把新題目 PDF 丟進這個資料夾即可，連結不變。
 #
-# 分享連結範例：
-#   https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view
-# 其中的  1AbCdEfGhIjKlMnOpQrStUvWxYz  就是「檔案 ID」，把它填在下一行：
-#
-# 1AbCdEfGhIjKlMnOpQrStUvWxYz
-#
-# 換題目時：在 Drive 用「管理版本」替換同一檔案內容即可，ID 不變。
+# 下方為目前設定的資料夾連結（第一個非註解行生效）：
+https://drive.google.com/drive/folders/1YWUd2aJjMRGOvEoG6ZsUyKzbQ1_cT1K3?usp=share_link

@@ -281,10 +281,10 @@ public partial class MainWindow : Window
     /// <summary>PDF 模式：背景由 Google Drive 下載題目 PDF，完成後設定快取路徑供 app://local/exam.pdf 提供。</summary>
     private void StartExamPdfDownload()
     {
-        var id = Environment.GetEnvironmentVariable("BYOD_PDF_ID");
-        if (string.IsNullOrWhiteSpace(id))
+        var source = Environment.GetEnvironmentVariable("BYOD_PDF_ID");
+        if (string.IsNullOrWhiteSpace(source))
         {
-            Console.WriteLine("[BYOD] 未設定 BYOD_PDF_ID（請在專案根目錄的 pdf-id.txt 填入 Drive 檔案 ID）。");
+            Console.WriteLine("[BYOD] 未設定題目 PDF 來源（請在專案根目錄的 pdf-id.txt 填入 Drive 資料夾/檔案連結）。");
             return;
         }
 
@@ -292,7 +292,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                var path = await PdfService.DownloadDrivePdfAsync(id.Trim());
+                var path = await PdfService.DownloadExamPdfAsync(source.Trim());
                 LocalAssetSchemeHandlerFactory.PdfCachePath = path;
                 Console.WriteLine($"[BYOD] 題目 PDF 已下載：{path}");
             }
