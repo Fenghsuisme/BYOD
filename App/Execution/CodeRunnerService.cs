@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -46,7 +47,8 @@ public sealed class CodeRunnerService
         _runTimeoutMs = runTimeoutMs;
     }
 
-    public async Task<RunResult> RunAsync(string language, string code, string stdin)
+    public async Task<RunResult> RunAsync(string language, string code, string stdin,
+        IReadOnlyList<(string name, string content)>? extraFiles = null)
     {
         var isC = string.Equals(language, "c", StringComparison.OrdinalIgnoreCase);
         var isCpp = language is "cpp" or "c++" or "cc"
@@ -70,6 +72,17 @@ public sealed class CodeRunnerService
         try
         {
             await File.WriteAllTextAsync(srcPath, code ?? string.Empty);
+
+            // 把輔助分頁（.h 等）一起寫進同一個 workDir，讓 #include "xxx.h" 能找到
+            if (extraFiles != null)
+            {
+                foreach (var (name, content) in extraFiles)
+                {
+                    var safeName = Path.GetFileName(name); // 只取檔名，防止路徑穿越
+                    if (!string.IsNullOrEmpty(safeName))
+                        await File.WriteAllTextAsync(Path.Combine(workDir, safeName), content ?? string.Empty);
+                }
+            }
 
             // ---- 編譯 ----
             var compileArgs = $"-O2 {std} -o \"{exePath}\" \"{srcPath}\"";

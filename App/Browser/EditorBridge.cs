@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using ByodKioskBrowser.Execution;
 
@@ -41,8 +42,9 @@ public sealed class EditorBridge
     /// <summary>
     /// 觸發編譯並執行（不等待回傳）。完成後以 RunCompleted 事件回推 JSON 結果，
     /// 由 C# 呼叫 window.__runResult 顯示。
+    /// filesJson：所有分頁 [{name, content, lang}] 的 JSON，用於將 .h 等輔助檔案寫入 workDir。
     /// </summary>
-    public void runCode(string language, string code, string stdin)
+    public void runCode(string language, string code, string stdin, string? filesJson = null)
     {
         Console.WriteLine($"[BYOD-run] runCode 進入：lang={language} codeLen={(code?.Length ?? 0)} stdinLen={(stdin?.Length ?? 0)}");
         _ = Task.Run(async () =>
@@ -50,7 +52,8 @@ public sealed class EditorBridge
             string json;
             try
             {
-                var result = await _runner.RunAsync(language ?? "cpp", code ?? string.Empty, stdin ?? string.Empty);
+                var extraFiles = ParseExtraFiles(language, filesJson);
+                var result = await _runner.RunAsync(language ?? "cpp", code ?? string.Empty, stdin ?? string.Empty, extraFiles);
                 json = result.ToJson();
             }
             catch (Exception ex)
@@ -61,5 +64,31 @@ public sealed class EditorBridge
             Console.WriteLine($"[BYOD-run] runCode 完成，推回結果（{json.Length} 字元）");
             RunCompleted?.Invoke(json);
         });
+    }
+
+    // 解析所有分頁 JSON，排除當前正在編譯的主檔（避免重複寫入），回傳輔助檔（.h 等）
+    private static List<(string name, string content)> ParseExtraFiles(string? mainLang, string? filesJson)
+    {
+        var result = new List<(string, string)>();
+        if (string.IsNullOrEmpty(filesJson)) return result;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(filesJson);
+            var mainExt = (mainLang ?? "cpp") switch { "c" => ".c", "h" => ".h", _ => ".cpp" };
+            bool mainSeen = false;
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                var name = el.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+                var lang = el.TryGetProperty("lang", out var l) ? l.GetString() ?? "" : "";
+                // 跳過第一個符合主語言副檔名的分頁（那是 runCode 的 code 參數，已傳入）
+                var ext = System.IO.Path.GetExtension(name).ToLowerInvariant();
+                bool isMain = !mainSeen && (ext == mainExt || (mainLang == "cpp" && ext == ".cc"));
+                if (isMain) { mainSeen = true; continue; }
+                if (!string.IsNullOrEmpty(name)) result.Add((name, content));
+            }
+        }
+        catch { /* 解析失敗不影響主流程 */ }
+        return result;
     }
 }

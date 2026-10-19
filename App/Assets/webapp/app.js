@@ -135,8 +135,10 @@
         var activeId = null;
         var tabSeq = 0;
 
-        function extForLang(lang) { return lang === "c" ? ".c" : ".cpp"; }
-        function langForName(name) { return /\.c$/i.test(name) ? "c" : "cpp"; }
+        function extForLang(lang) { return lang === "c" ? ".c" : lang === "h" ? ".h" : ".cpp"; }
+        function langForName(name) { return /\.c$/i.test(name) ? "c" : /\.h$/i.test(name) ? "h" : "cpp"; }
+        // Monaco 沒有 "h" 語言 ID，統一用 "c" 做語法標色
+        function monacoLang(lang) { return lang === "h" ? "c" : lang; }
         function activeTab() { return tabs.find(function (t) { return t.id === activeId; }); }
 
         function renderTabs() {
@@ -182,7 +184,7 @@
                 id: id,
                 name: name || ("file" + tabSeq + extForLang(lang)),
                 lang: lang,
-                model: monaco.editor.createModel(content || "", lang)
+                model: monaco.editor.createModel(content || "", monacoLang(lang))
             };
             tabs.push(tab);
             activateTab(id);
@@ -204,7 +206,7 @@
             if (!name) { return; }
             tab.name = name;
             tab.lang = langForName(name);
-            monaco.editor.setModelLanguage(tab.model, tab.lang);
+            monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
             if (tab.id === activeId && languageSelect.value !== tab.lang) { languageSelect.value = tab.lang; }
             renderTabs();
         }
@@ -215,8 +217,8 @@
             var tab = activeTab();
             if (!tab) { return; }
             tab.lang = languageSelect.value;
-            tab.name = tab.name.replace(/\.(c|cpp)$/i, extForLang(tab.lang));
-            monaco.editor.setModelLanguage(tab.model, tab.lang);
+            tab.name = tab.name.replace(/\.(cpp|c|h)$/i, extForLang(tab.lang));
+            monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
             renderTabs();
         });
 
@@ -240,8 +242,8 @@
             var tab = activeTab();
             if (!lang || !tab) { return; }
             tab.lang = lang;
-            tab.name = tab.name.replace(/\.(c|cpp)$/i, extForLang(lang));
-            monaco.editor.setModelLanguage(tab.model, lang);
+            tab.name = tab.name.replace(/\.(cpp|c|h)$/i, extForLang(lang));
+            monaco.editor.setModelLanguage(tab.model, monacoLang(lang));
             if (languageSelect.value !== lang) { languageSelect.value = lang; }
             renderTabs();
         };
@@ -317,8 +319,10 @@
             setOutput("");
 
             // fire-and-forget：結果由 C# 呼叫 window.__runResult 推回
+            // 同時傳送所有分頁，讓 .h 等輔助檔案能被 #include
             try {
-                b.runCode(languageSelect.value, editor.getValue(), stdinEl.value || "");
+                var filesJson = window.__collectFiles ? window.__collectFiles() : "[]";
+                b.runCode(languageSelect.value, editor.getValue(), stdinEl.value || "", filesJson);
             } catch (e) {
                 finishRun();
                 setOutput("執行失敗：" + e, "error");
@@ -389,9 +393,301 @@
             });
         }
 
+        // ================= 參考面板 =================
+        setupRefPanels();
+
         // 通知 C# 編輯器已就緒
         notifyReady();
     });
+
+    // ================= 參考面板資料與邏輯 =================
+    // panel div 在此動態建立（不放在 HTML 靜態結構中，避免干擾 body flex 佈局）
+    function makePanelEl(id, title, searchId, bodyId) {
+        var panel = document.createElement("div");
+        panel.id = id;
+        panel.className = "ref-panel hidden";
+
+        var hdr = document.createElement("div");
+        hdr.className = "ref-panel-header";
+
+        var titleEl = document.createElement("span");
+        titleEl.textContent = title;
+
+        var inp = document.createElement("input");
+        inp.id = searchId;
+        inp.type = "text";
+        inp.placeholder = "搜尋…";
+        inp.autocomplete = "off";
+
+        var closeBtn = document.createElement("button");
+        closeBtn.className = "ref-close";
+        closeBtn.textContent = "✕";
+        closeBtn.addEventListener("click", function () { panel.classList.add("hidden"); });
+
+        hdr.appendChild(titleEl);
+        hdr.appendChild(inp);
+        hdr.appendChild(closeBtn);
+
+        var body = document.createElement("div");
+        body.id = bodyId;
+        body.className = "ref-panel-body";
+
+        panel.appendChild(hdr);
+        panel.appendChild(body);
+        document.body.appendChild(panel);
+        return panel;
+    }
+
+    function setupRefPanels() {
+        var LIB_DATA = [
+            { cat: "輸出 / 輸入 <stdio.h>", items: [
+                ["printf(fmt, ...)", "格式化輸出到 stdout"],
+                ["scanf(fmt, ...)", "從 stdin 讀入（需傳指標 &x）"],
+                ["puts(s)", "輸出字串並換行"],
+                ["getchar()", "讀一個字元"],
+                ["putchar(c)", "輸出一個字元"],
+                ["fopen(path, mode)", "開啟檔案，mode: r/w/a"],
+                ["fclose(fp)", "關閉檔案"],
+                ["fscanf(fp, fmt, ...)", "從檔案讀入"],
+                ["fprintf(fp, fmt, ...)", "格式化輸出到檔案"],
+                ["fgets(buf, n, fp)", "讀一行（含 '\\n'），安全版 gets"],
+                ["sprintf(buf, fmt, ...)", "格式化輸出到字串"],
+                ["sscanf(buf, fmt, ...)", "從字串讀入"]
+            ]},
+            { cat: "字串 <string.h>", items: [
+                ["strlen(s)", "字串長度（不含 '\\0'）"],
+                ["strcmp(a, b)", "比較字串，<0 / 0 / >0"],
+                ["strncmp(a, b, n)", "比較前 n 個字元"],
+                ["strcpy(dst, src)", "複製字串"],
+                ["strncpy(dst, src, n)", "最多複製 n 個字元"],
+                ["strcat(dst, src)", "串接字串"],
+                ["strstr(hay, needle)", "在 hay 中找 needle，回傳指標"],
+                ["strchr(s, c)", "找第一個字元 c"],
+                ["memset(ptr, val, n)", "設定 n 個 byte 為 val（常用清零）"],
+                ["memcpy(dst, src, n)", "複製 n 個 byte"],
+                ["memmove(dst, src, n)", "可重疊的 memcpy"]
+            ]},
+            { cat: "記憶體 <stdlib.h>", items: [
+                ["malloc(size)", "配置 size bytes，回傳 void*"],
+                ["calloc(n, size)", "配置 n*size bytes 並清零"],
+                ["realloc(ptr, size)", "調整配置大小"],
+                ["free(ptr)", "釋放記憶體"],
+                ["atoi(s)", "字串轉 int"],
+                ["atof(s)", "字串轉 double"],
+                ["abs(n)", "整數絕對值"],
+                ["rand()", "隨機整數 [0, RAND_MAX]"],
+                ["srand(seed)", "設定亂數種子"],
+                ["qsort(arr, n, sz, cmp)", "快速排序，cmp(a,b): <0升冪"],
+                ["exit(code)", "結束程式"]
+            ]},
+            { cat: "數學 <math.h>", items: [
+                ["sqrt(x)", "平方根"],
+                ["pow(x, y)", "x 的 y 次方"],
+                ["fabs(x)", "浮點絕對值"],
+                ["ceil(x)", "往上取整"],
+                ["floor(x)", "往下取整"],
+                ["round(x)", "四捨五入"],
+                ["log(x)", "自然對數 ln"],
+                ["log2(x)", "以 2 為底"],
+                ["log10(x)", "以 10 為底"],
+                ["sin/cos/tan(x)", "三角函式（弧度）"]
+            ]},
+            { cat: "C++ iostream", items: [
+                ["std::cout << x << '\\n'", "輸出（比 endl 快）"],
+                ["std::cin >> x", "輸入"],
+                ["std::cin.ignore()", "吃掉換行符"],
+                ["std::getline(cin, s)", "讀一整行到 string"]
+            ]},
+            { cat: "C++ string", items: [
+                ["s.size() / s.length()", "字串長度"],
+                ["s.substr(pos, len)", "子字串"],
+                ["s.find(t)", "找子字串，未找到回傳 string::npos"],
+                ["s.replace(pos, len, t)", "取代子字串"],
+                ["s.push_back(c)", "尾端加字元"],
+                ["s.pop_back()", "移除末字元"],
+                ["std::to_string(n)", "數字轉字串"],
+                ["std::stoi(s)", "字串轉 int"],
+                ["std::stod(s)", "字串轉 double"]
+            ]},
+            { cat: "C++ vector", items: [
+                ["vector<T> v(n, val)", "建立 n 個初值 val"],
+                ["v.push_back(x)", "尾端加元素"],
+                ["v.pop_back()", "移除末元素"],
+                ["v.size()", "元素個數"],
+                ["v.empty()", "是否為空"],
+                ["v.resize(n)", "調整大小"],
+                ["v.clear()", "清空"],
+                ["v.begin() / v.end()", "迭代器（供 algorithm 用）"]
+            ]},
+            { cat: "C++ algorithm", items: [
+                ["sort(begin, end)", "排序（升冪）"],
+                ["sort(begin, end, cmp)", "自訂排序"],
+                ["reverse(begin, end)", "反轉"],
+                ["max(a, b) / min(a, b)", "最大/最小值"],
+                ["max_element(b, e)", "最大元素迭代器"],
+                ["find(b, e, val)", "線性搜尋"],
+                ["lower_bound(b, e, val)", "二分搜尋（≥val 的第一個）"],
+                ["upper_bound(b, e, val)", "二分搜尋（>val 的第一個）"],
+                ["fill(b, e, val)", "全部填 val"],
+                ["accumulate(b, e, init)", "求和（需 #include <numeric>）"],
+                ["unique(b, e)", "移除連續重複（需先排序）"]
+            ]},
+            { cat: "C++ map / set", items: [
+                ["map<K,V> m", "有序鍵值對（紅黑樹）"],
+                ["unordered_map<K,V> m", "雜湊鍵值對，O(1) 均攤"],
+                ["m[key] = val", "插入/更新"],
+                ["m.count(key)", "是否存在（0或1）"],
+                ["m.find(key)", "回傳迭代器"],
+                ["m.erase(key)", "刪除"],
+                ["set<T> s", "有序不重複集合"],
+                ["s.insert(x)", "插入"],
+                ["s.count(x)", "是否存在"],
+                ["s.erase(x)", "刪除"]
+            ]},
+            { cat: "C++ queue / stack / priority_queue", items: [
+                ["queue<T> q", "FIFO 佇列"],
+                ["q.push(x) / q.pop()", "入列/出列"],
+                ["q.front() / q.back()", "前端/後端"],
+                ["stack<T> st", "LIFO 堆疊"],
+                ["st.push(x) / st.pop()", "推入/彈出"],
+                ["st.top()", "頂端元素"],
+                ["priority_queue<T> pq", "最大堆（預設）"],
+                ["priority_queue<T,vector<T>,greater<T>> pq", "最小堆"]
+            ]}
+        ];
+
+        var DICT_DATA = [
+            ["algorithm", "演算法"],
+            ["array", "陣列"],
+            ["assertion", "斷言"],
+            ["binary search", "二分搜尋"],
+            ["boolean", "布林值"],
+            ["breadth-first search (BFS)", "廣度優先搜尋"],
+            ["brute force", "暴力法"],
+            ["buffer", "緩衝區"],
+            ["callback", "回呼函式"],
+            ["class", "類別"],
+            ["compile", "編譯"],
+            ["complexity", "複雜度（時間/空間）"],
+            ["conditional", "條件判斷"],
+            ["constant", "常數"],
+            ["constructor", "建構子"],
+            ["data structure", "資料結構"],
+            ["depth-first search (DFS)", "深度優先搜尋"],
+            ["destructor", "解構子"],
+            ["dynamic programming (DP)", "動態規劃"],
+            ["encapsulation", "封裝"],
+            ["exception", "例外"],
+            ["function", "函式"],
+            ["graph", "圖"],
+            ["greedy", "貪婪法"],
+            ["heap", "堆積"],
+            ["inheritance", "繼承"],
+            ["iterator", "迭代器"],
+            ["linked list", "鏈結串列"],
+            ["loop", "迴圈"],
+            ["macro", "巨集"],
+            ["namespace", "命名空間"],
+            ["null pointer", "空指標"],
+            ["object", "物件"],
+            ["overflow", "溢位"],
+            ["overload", "多載"],
+            ["override", "覆寫"],
+            ["pointer", "指標"],
+            ["polymorphism", "多型"],
+            ["queue", "佇列"],
+            ["recursion", "遞迴"],
+            ["reference", "參考（引用）"],
+            ["runtime error", "執行期錯誤"],
+            ["scope", "範圍（作用域）"],
+            ["segment fault", "區段錯誤"],
+            ["stack", "堆疊"],
+            ["stack overflow", "堆疊溢位"],
+            ["string", "字串"],
+            ["struct", "結構"],
+            ["template", "樣板"],
+            ["time limit exceeded (TLE)", "超過時間限制"],
+            ["traverse", "走訪/遍歷"],
+            ["tree", "樹"],
+            ["typedef", "型別別名"],
+            ["variable", "變數"],
+            ["vector", "動態陣列"],
+            ["virtual", "虛擬"],
+            ["void", "無（回傳型別）"]
+        ];
+
+        // 動態建立兩個面板 DOM（避免靜態 HTML 干擾 body flex 排版）
+        makePanelEl("panel-lib", "C/C++ 函式庫速查", "lib-search", "lib-body");
+        makePanelEl("panel-dict", "英漢程式術語", "dict-search", "dict-body");
+
+        function makeRow(nameText, descText) {
+            var row = document.createElement("div");
+            row.className = "ref-item";
+            var n = document.createElement("span");
+            n.className = "ref-name";
+            n.textContent = nameText;
+            var d = document.createElement("span");
+            d.className = "ref-desc";
+            d.textContent = descText;
+            row.appendChild(n);
+            row.appendChild(d);
+            return row;
+        }
+
+        function buildLib(filter) {
+            var body = document.getElementById("lib-body");
+            body.innerHTML = "";
+            var f = (filter || "").toLowerCase();
+            LIB_DATA.forEach(function (sec) {
+                var matched = sec.items.filter(function (it) {
+                    return !f || it[0].toLowerCase().includes(f) || it[1].toLowerCase().includes(f);
+                });
+                if (!matched.length) { return; }
+                var section = document.createElement("div");
+                section.className = "ref-section";
+                var title = document.createElement("div");
+                title.className = "ref-section-title";
+                title.textContent = sec.cat;     // textContent：避免 <stdio.h> 被當 tag
+                section.appendChild(title);
+                matched.forEach(function (it) { section.appendChild(makeRow(it[0], it[1])); });
+                body.appendChild(section);
+            });
+        }
+
+        function buildDict(filter) {
+            var body = document.getElementById("dict-body");
+            body.innerHTML = "";
+            var f = (filter || "").toLowerCase();
+            var matched = DICT_DATA.filter(function (it) {
+                return !f || it[0].toLowerCase().includes(f) || it[1].includes(f);
+            });
+            var section = document.createElement("div");
+            section.className = "ref-section";
+            matched.forEach(function (it) { section.appendChild(makeRow(it[0], it[1])); });
+            body.appendChild(section);
+        }
+
+        buildLib("");
+        buildDict("");
+
+        document.getElementById("lib-search").addEventListener("input", function () { buildLib(this.value); });
+        document.getElementById("dict-search").addEventListener("input", function () { buildDict(this.value); });
+
+        document.getElementById("ref-lib-btn").addEventListener("click", function () {
+            var p = document.getElementById("panel-lib");
+            var d = document.getElementById("panel-dict");
+            d.classList.add("hidden");
+            p.classList.toggle("hidden");
+            if (!p.classList.contains("hidden")) document.getElementById("lib-search").focus();
+        });
+        document.getElementById("ref-dict-btn").addEventListener("click", function () {
+            var p = document.getElementById("panel-dict");
+            var l = document.getElementById("panel-lib");
+            l.classList.add("hidden");
+            p.classList.toggle("hidden");
+            if (!p.classList.contains("hidden")) document.getElementById("dict-search").focus();
+        });
+    }
 
     // ================= C / C++ 輕量語法補全 =================
     function registerCppCompletions() {
@@ -480,5 +776,7 @@
 
         monaco.languages.registerCompletionItemProvider("c", provider(false));
         monaco.languages.registerCompletionItemProvider("cpp", provider(true));
+        // .h 檔用 "c" language ID，但以防萬一也掛一個
+        try { monaco.languages.registerCompletionItemProvider("h", provider(false)); } catch(e) {}
     }
 })();
