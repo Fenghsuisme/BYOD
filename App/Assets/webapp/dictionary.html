@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"/>
+<title>English-Chinese Dictionary</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#1e1e1e;color:#d4d4d4;font-family:"Segoe UI","Microsoft JhengHei",sans-serif;font-size:13px}
+body{display:flex;flex-direction:column;overflow:hidden}
+#topbar{display:flex;align-items:center;gap:10px;padding:0 14px;height:40px;flex-shrink:0;background:#252526;border-bottom:1px solid #3e3e42}
+#topbar a{color:#9cdcfe;text-decoration:none;font-size:12px;padding:3px 8px;border:1px solid #3e3e42;border-radius:4px}
+#topbar a:hover{background:#2d2d30}
+#topbar span{font-weight:600;color:#dcdcaa;font-size:13px}
+#search-box{margin-left:auto;background:#2d2d30;color:#d4d4d4;border:1px solid #3e3e42;border-radius:4px;padding:4px 10px;font-size:12px;width:240px;outline:none}
+#search-box:focus{border-color:#0e639c}
+#search-box::placeholder{color:#555}
+#alpha-bar{display:flex;flex-wrap:wrap;gap:2px;padding:6px 12px;background:#252526;border-bottom:1px solid #3e3e42;flex-shrink:0}
+.alpha-btn{background:#2d2d30;color:#9cdcfe;border:1px solid #3e3e42;border-radius:3px;padding:2px 7px;font-size:11px;cursor:pointer}
+.alpha-btn:hover,.alpha-btn.active{background:#0e639c;color:#fff;border-color:#0e639c}
+#content{flex:1;overflow-y:auto;padding:8px 14px 24px;scrollbar-width:thin;scrollbar-color:#3e3e42 transparent}
+#content::-webkit-scrollbar{width:6px}
+#content::-webkit-scrollbar-thumb{background:#3e3e42;border-radius:3px}
+.letter-group{margin-bottom:16px}
+.letter-title{font-size:11px;font-weight:700;color:#6ca8d4;text-transform:uppercase;letter-spacing:1px;padding:4px 0 5px;border-bottom:1px solid #2d2d30;margin-bottom:4px}
+.word-row{display:flex;align-items:baseline;padding:3px 6px;border-radius:3px}
+.word-row:hover{background:#252526}
+.word-en{color:#9cdcfe;font-size:12.5px;font-weight:500;min-width:200px;flex-shrink:0}
+.word-zh{color:#a8a8a8;font-size:12px;line-height:1.4}
+#no-result{color:#666;padding:20px;text-align:center}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <a href="https://judge.gai.tw/">← 返回評測站</a>
+  <span>English-Chinese Dictionary</span>
+  <input id="search-box" type="text" placeholder="Search English or Chinese…" autocomplete="off"/>
+</div>
+<div id="alpha-bar">
+  <button class="alpha-btn" data-l="ALL">All</button>
+</div>
+<div id="content"></div>
+<div id="no-result" class="hidden">No matching entries.</div>
+<script>
+// Format: [english, chinese]
+const RAW = [
+// A
+["abandon","放棄；遺棄"],["ability","能力；才能"],["able","能夠的；有能力的"],["about","關於；大約"],
+["above","在…上面；以上"],["absence","缺席；不在"],["absent","缺席的；缺少的"],["absolute","絕對的；完全的"],
+["abstract","抽象的；摘要"],["accept","接受；承認"],["access","進入；使用權；存取"],["accident","事故；意外"],
+["accomplish","完成；實現"],["accuracy","準確性；精確度"],["accurate","準確的；正確的"],["achieve","實現；達到"],
+["achievement","成就；成績"],["acknowledge","承認；確認"],["acquire","獲得；取得"],["action","行動；動作"],
+["active","活躍的；積極的"],["actual","實際的；真實的"],["add","添加；加法"],["address","地址；演講；處理"],
+["adjacent","鄰近的；毗鄰的"],["adjust","調整；適應"],["advance","前進；進步；預先的"],["advantage","優勢；有利條件"],
+["affect","影響；感動"],["afford","負擔得起；提供"],["after","在…之後"],["again","再一次；又"],
+["agree","同意；贊成"],["ahead","在前面；向前"],["allow","允許；讓"],["almost","幾乎；差不多"],
+["alone","獨自地；單獨的"],["along","沿著；一起"],["already","已經"],["also","也；此外"],
+["although","雖然；儘管"],["always","總是；永遠"],["amount","數量；金額"],["analyze","分析"],
+["angle","角度；角"],["answer","回答；答案"],["appear","出現；似乎"],["apply","應用；申請"],
+["approach","方法；接近；處理"],["area","區域；面積"],["argument","論點；爭論"],["arrange","安排；整理"],
+["array","陣列；排列"],["assume","假設；承擔"],["attempt","嘗試；努力"],["attention","注意；注意力"],
+["available","可用的；有空的"],["avoid","避免；回避"],["aware","意識到的；察覺的"],
+// B
+["background","背景；後台"],["base","基礎；底部；以…為基礎"],["behavior","行為；表現"],["below","在…下面；低於"],
+["benefit","好處；利益"],["between","在…之間"],["binary","二進位的；二元的"],["block","塊；阻塞；區域"],
+["boundary","邊界；界限"],["branch","分支；分枝"],["break","中斷；打破；休息"],["buffer","緩衝區；緩衝"],
+["build","建立；構建"],["byte","位元組"],
+// C
+["calculate","計算；估算"],["call","呼叫；稱呼；電話"],["capacity","容量；能力"],["capture","捕獲；擷取"],
+["case","情況；案例；大小寫"],["cause","原因；導致"],["certain","確定的；某些"],["change","改變；變化"],
+["check","檢查；核對"],["choose","選擇"],["class","類別；課程"],["clear","清除；清楚的"],
+["close","關閉；靠近的"],["collect","收集；蒐集"],["command","命令；指令"],["compare","比較"],
+["compile","編譯"],["complete","完整的；完成"],["complex","複雜的；複合體"],["compute","計算"],
+["condition","條件；狀況"],["connect","連接；聯繫"],["constant","常數；不變的"],["contain","包含；容納"],
+["continue","繼續"],["control","控制；管理"],["convert","轉換；轉化"],["copy","複製；副本"],
+["correct","正確的；改正"],["count","計數；計算"],["create","創建；創造"],["current","當前的；電流"],
+["custom","自訂的；習俗"],["cycle","循環；週期"],
+// D
+["data","資料；數據"],["debug","除錯；調試"],["declare","宣告；聲明"],["decrease","減少；降低"],
+["define","定義；規定"],["delete","刪除"],["depend","依賴；取決於"],["describe","描述；說明"],
+["design","設計"],["detect","偵測；發現"],["difference","差異；不同"],["difficult","困難的"],
+["direct","直接的；指導"],["display","顯示；展示"],["divide","除法；分割"],["document","文件；記錄"],
+["double","雙倍的；浮點數"],["duplicate","複製；重複"],["dynamic","動態的"],
+// E
+["each","每個；各自"],["edge","邊緣；邊"],["efficient","高效的；有效率的"],["element","元素；成分"],
+["empty","空的；清空"],["encode","編碼"],["end","結束；末端"],["entry","條目；入口；進入"],
+["environment","環境"],["equal","相等的；等號"],["error","錯誤"],["evaluate","評估；求值"],
+["exact","精確的；確切的"],["example","範例；例子"],["execute","執行"],["exist","存在"],
+["expect","預期；期望"],["expression","表達式；表達"],["extend","延伸；擴展"],["extract","提取；擷取"],
+// F
+["fail","失敗"],["false","假；錯誤的"],["fast","快速的"],["field","欄位；領域"],
+["file","檔案"],["find","找到；尋找"],["finish","完成；結束"],["first","第一；首先"],
+["fixed","固定的；修復的"],["flag","標誌；旗幟"],["float","浮點數；漂浮"],["flow","流程；流動"],
+["focus","焦點；集中"],["follow","跟隨；遵循"],["format","格式；格式化"],["forward","向前；轉發"],
+["free","釋放；空閒；免費"],["function","函式；功能"],
+// G
+["general","一般的；普通的"],["generate","生成；產生"],["given","給定的"],["global","全域的；全局的"],
+["greater","更大的"],["group","群組；分組"],
+// H
+["handle","處理；控制代碼"],["hash","雜湊；雜湊值"],["head","頭部；首節點"],["heap","堆積；堆"],
+["help","幫助"],["hidden","隱藏的"],["high","高的"],["hold","持有；保持"],
+// I
+["implement","實作；執行"],["include","包含；引入"],["increase","增加；增長"],["index","索引；下標"],
+["initialize","初始化"],["input","輸入"],["insert","插入"],["instance","實例；情況"],
+["integer","整數"],["iterate","迭代；遍歷"],
+// J
+["join","加入；合併"],["judge","評判；法官"],
+// K
+["keep","保持；保留"],["key","鍵；關鍵"],["kind","種類；友善的"],
+// L
+["label","標籤；標記"],["large","大的"],["last","最後的；持續"],["left","左邊；剩餘"],
+["length","長度"],["less","較少的"],["level","層級；等級"],["limit","限制；極限"],
+["link","連結；鏈結"],["list","列表；清單"],["local","本地的；局部的"],["logic","邏輯"],
+["long","長的；長整數"],["loop","迴圈"],["lower","較低的；降低"],
+// M
+["main","主要的；主函式"],["manage","管理"],["map","映射；地圖"],["mark","標記；分數"],
+["match","匹配；符合"],["maximum","最大值；最大的"],["memory","記憶體；記憶"],["merge","合併"],
+["method","方法；函式"],["minimum","最小值；最小的"],["mode","模式"],["modify","修改"],
+["module","模組"],["move","移動；移至"],["multiple","倍數；多個的"],
+// N
+["name","名稱；命名"],["negative","負數；否定的"],["nested","巢狀的"],["next","下一個；下一步"],
+["node","節點"],["normal","正常的"],["null","空值；空指標"],["number","數字；編號"],
+// O
+["object","物件；目標"],["offset","偏移量"],["operation","操作；運算"],["optimal","最優的"],
+["order","順序；命令"],["output","輸出"],["overflow","溢出"],["override","覆寫；凌駕"],
+// P
+["pair","對；鍵值對"],["parameter","參數"],["parse","解析"],["path","路徑"],
+["pointer","指標"],["positive","正數；積極的"],["previous","上一個；之前的"],["print","輸出；印出"],
+["process","處理；行程"],["program","程式"],["property","屬性；性質"],["push","推入"],
+// Q
+["query","查詢"],["queue","佇列"],
+// R
+["random","隨機的"],["range","範圍"],["read","讀取"],["recursive","遞迴的"],
+["reference","參考；引用"],["remove","移除"],["repeat","重複"],["replace","取代"],
+["reset","重置"],["result","結果"],["return","返回；回傳值"],["right","右邊；正確"],
+["root","根；根節點"],["run","執行；運行"],
+// S
+["search","搜尋"],["set","集合；設定"],["short","短的；短整數"],["size","大小；尺寸"],
+["sort","排序"],["source","來源；原始碼"],["split","分割"],["stack","堆疊"],
+["start","開始；啟動"],["state","狀態"],["step","步驟"],["stop","停止"],
+["store","儲存"],["string","字串"],["structure","結構"],["sum","總和；加總"],
+["swap","交換"],["system","系統"],
+// T
+["table","表格；哈希表"],["target","目標"],["test","測試"],["total","總計；合計"],
+["tree","樹；樹狀結構"],["true","真；正確的"],["type","類型；型別"],
+// U
+["union","聯合；並集"],["unique","唯一的"],["unsigned","無符號的"],["update","更新"],
+["use","使用"],
+// V
+["valid","有效的"],["value","值；數值"],["variable","變數"],["vector","向量；向量容器"],
+["version","版本"],
+// W
+["while","當…時；迴圈"],["write","寫入"],
+// ── Extended vocabulary A ──
+["abbreviate","縮寫；簡化"],["abolish","廢除；取消"],["abroad","國外；海外"],["accelerate","加速"],
+["accent","口音；強調"],["accommodate","容納；提供住宿"],["accompany","陪同；伴隨"],
+["accumulate","累積；積累"],["accurate","準確的；精密的"],["ache","疼痛；痛"],
+["adapt","適應；改編"],["adequate","足夠的；適當的"],["admire","欽佩；讚賞"],
+["admit","承認；接納"],["adopt","採用；收養"],["adult","成人；成年的"],
+["advance","前進；進步"],["advice","建議；忠告"],["advise","建議；忠告"],
+["affair","事務；事件"],["age","年齡；時代"],["agent","代理人；作用物"],
+["aim","目標；瞄準"],["alarm","警報；警告"],["album","相冊；專輯"],
+["alert","警覺的；警報"],["alike","相似的；同樣地"],["alive","活著的；有活力的"],
+["allocate","分配；配置"],["allow","允許；讓"],["allot","分配；撥給"],
+["alternative","替代方案；二選一的"],["amaze","使驚奇"],["ambitious","有雄心的；有抱負的"],
+["amend","修改；修正"],["announce","宣布；通知"],["annual","年度的；每年的"],
+["anticipate","預期；期待"],["appoint","任命；指定"],["appreciate","感謝；欣賞"],
+["appropriate","適當的；合適的"],["approve","批准；贊成"],["roughly","大約；粗略地"],
+["architecture","建築；架構"],["arrive","到達；抵達"],["article","文章；條款"],
+["aside","在旁邊；除了"],["aspect","方面；觀點"],["assemble","集合；組裝"],
+["assign","指派；賦值"],["assist","協助；幫助"],["atmosphere","大氣；氣氛"],
+["attach","附加；連接"],["attribute","屬性；歸因"],["authority","權力；當局"],
+["automatic","自動的"],
+// Extended B
+["back","後面；返回；背後"],["balance","平衡；結餘"],["basic","基本的；基礎"],
+["bear","承受；熊"],["beat","擊打；勝過"],["begin","開始"],["belong","屬於"],
+["beside","在…旁邊"],["beyond","超越；在…之外"],["bias","偏差；偏見"],
+["blame","責怪；責備"],["blank","空白的"],["bound","邊界；跳躍；受限的"],
+["brief","簡短的；簡報"],["broad","廣泛的；寬的"],["browse","瀏覽"],["bunch","一束；一組"],
+// Extended C
+["cancel","取消"],["careful","小心的；謹慎的"],["carry","攜帶；承載"],["category","類別；範疇"],
+["certain","確定的；某些"],["challenge","挑戰"],["character","字元；角色；性格"],
+["chart","圖表"],["cheap","便宜的"],["clever","聰明的；機靈的"],["client","客戶端；客戶"],
+["code","程式碼；代碼"],["common","普通的；常見的"],["compact","緊湊的；壓縮"],
+["concern","關心；問題"],["confirm","確認"],["conflict","衝突"],
+["consist","由…組成"],["constraint","約束；限制"],["context","上下文；背景"],
+["copy","複製；副本"],["core","核心"],["corner","角落；轉角"],["crash","崩潰；碰撞"],
+["critical","關鍵的；批評的"],
+// Extended D
+["damage","損壞；損害"],["deal","處理；交易"],["decide","決定"],["delay","延遲"],
+["deliver","傳遞；交付"],["demand","需求；要求"],["demonstrate","示範；展示"],
+["density","密度"],["depth","深度"],["determine","確定；決定"],["develop","開發；發展"],
+["dimension","維度；面向"],["disable","停用；使失效"],["discuss","討論"],
+["dismiss","解散；駁回"],["distance","距離"],["distinct","不同的；明顯的"],
+["distribute","分配；分發"],["domain","領域；網域"],["dominant","主要的；佔主導地位的"],
+["draw","繪製；抽取"],["driver","驅動程式；司機"],["drop","丟棄；下降"],
+// Extended E
+["eager","熱切的；渴望的"],["ease","容易；緩解"],["effect","效果；影響"],["effort","努力"],
+["elaborate","詳盡的；精心製作"],["eligible","合格的；有資格的"],["eliminate","消除"],
+["enable","啟用；使能夠"],["enforce","強制執行"],["enhance","增強；提高"],
+["ensure","確保"],["entire","整個的；全部的"],["estimate","估計；估算"],
+["event","事件"],["exception","例外；異常"],["expose","暴露；揭示"],["extra","額外的"],
+// Extended F
+["factor","因素；因子"],["familiar","熟悉的"],["feature","特徵；功能"],["fetch","取得；獲取"],
+["filter","過濾器；篩選"],["final","最終的；決賽"],["fix","修復；固定"],["flexible","靈活的"],
+["forward","轉發；前進"],["fraction","分數；小部分"],["frequent","頻繁的"],
+["front","前面；前端"],["full","完整的；滿的"],["further","更進一步"],
+// Extended G
+["gather","收集；聚集"],["goal","目標"],["grant","授予；補助"],["graph","圖；圖形"],
+["grow","成長；增長"],["guess","猜測"],["guide","指導；嚮導"],
+// Extended H
+["halt","停止；中止"],["happen","發生"],["hard","困難的；硬的"],["hardware","硬體"],
+["high","高的；高位"],["hit","命中；碰到"],["hook","鉤子；掛鉤"],
+// Extended I
+["identify","識別；確定"],["ignore","忽略"],["image","圖像；映像"],["immediate","立即的"],
+["impact","影響；衝擊"],["improve","改善；改進"],["indicate","指示；表明"],
+["indirect","間接的"],["inherit","繼承"],["inner","內部的；內層"],["integrate","整合"],
+["interface","介面"],["interrupt","中斷"],["interval","間隔"],["invoke","呼叫；調用"],
+["issue","問題；議題；發布"],
+// Extended J/K
+["justify","證明合理；對齊"],["known","已知的"],
+// Extended L
+["launch","啟動；發射"],["layer","層；圖層"],["layout","佈局；排版"],["least","最少的"],
+["load","載入；負載"],["location","位置；所在地"],["lock","鎖；加鎖"],
+// Extended M
+["maintain","維護；保持"],["manner","方式；態度"],["measure","測量；措施"],
+["mechanism","機制；方法"],["middle","中間"],["migrate","遷移"],["minor","次要的"],
+["miss","遺漏；未命中"],["mix","混合"],
+// Extended N
+["navigate","導航；瀏覽"],["necessary","必要的"],["network","網路；網絡"],
+["notice","注意；通知"],
+// Extended O
+["obtain","獲取；得到"],["occur","發生；出現"],["optional","可選的；選擇性的"],
+["original","原始的；原版的"],["outer","外部的；外層"],
+// Extended P
+["package","套件；封裝"],["pattern","模式；圖案"],["perform","執行；表現"],
+["persistent","持久的"],["place","放置；地方"],["plan","計劃"],["platform","平台"],
+["point","指向；點"],["port","連接埠；移植"],["position","位置；職位"],
+["power","電源；能力；冪次"],["predict","預測"],["prefix","前綴"],
+["prepare","準備"],["prevent","防止"],["priority","優先順序"],["protect","保護"],
+["provide","提供"],["pure","純粹的"],
+// Extended Q/R
+["race","競賽；竟跑"],["raise","提升；引發"],["record","記錄"],["reduce","減少；化簡"],
+["reflect","反映；反射"],["refresh","重新整理；刷新"],["reject","拒絕；忽略"],["relate","關聯；相關"],
+["release","釋放；發布"],["reliable","可靠的"],["represent","代表；表示"],
+["request","請求"],["require","需要；要求"],["resolve","解析；解決"],
+["resource","資源"],["response","回應；反應"],["restore","還原；恢復"],
+["reverse","反轉；相反"],["review","複習；審查"],["rewrite","改寫"],
+// Extended S
+["safe","安全的"],["save","儲存；保存"],["schedule","排程；時間表"],["scope","範圍；作用域"],
+["sequence","序列；順序"],["server","伺服器"],["share","分享；共享"],["shift","移位；轉換"],
+["signal","訊號"],["simple","簡單的"],["single","單一的"],["slow","慢的"],
+["specify","指定"],["standard","標準"],["static","靜態的"],["strict","嚴格的"],
+["subarray","子陣列"],["subset","子集合"],["suffix","後綴"],["support","支援；支持"],
+["switch","切換；開關"],["sync","同步"],
+// Extended T
+["task","任務"],["temporary","暫時的"],["thread","執行緒；執行緒"],["threshold","閾值"],
+["throw","拋出；投擲"],["timeout","逾時"],["top","頂部；頂端"],["trace","追蹤"],
+["transfer","傳輸；轉移"],["traverse","遍歷"],["trigger","觸發"],["truncate","截斷"],
+// Extended U/V
+["unordered","無序的"],["upper","上方的；大寫"],["utility","工具；實用程式"],
+["verify","驗證"],["void","無回傳值；空的"],
+// Extended W/Z
+["weight","權重；重量"],["window","視窗；窗口"],["wrap","包裝；換行"],["zero","零；清零"],
+// ── Common general vocabulary ──
+["able","能夠的"],["abroad","在國外"],["accept","接受"],["account","帳號；帳戶；說明"],
+["accurate","正確的"],["act","行動；表演"],["active","活躍的"],["actual","實際的"],
+["advance","前進；預先"],["adventure","冒險"],["advice","建議"],["afraid","害怕的"],
+["afternoon","下午"],["age","年齡"],["ago","以前"],["agree","同意"],
+["airport","機場"],["alike","相似的"],["alive","活著的"],["all","全部；所有"],
+["allow","允許"],["almost","幾乎"],["alone","單獨的"],["along","沿著"],
+["although","雖然"],["always","總是"],["among","在…之間（三者以上）"],["ancient","古代的"],
+["angry","生氣的"],["animal","動物"],["another","另一個"],["answer","答案"],
+["any","任何"],["apartment","公寓"],["apologize","道歉"],["appear","出現"],
+["apply","應用"],["appreciate","感激"],["around","在…周圍"],["arrive","到達"],
+["ask","問"],["at least","至少"],["attack","攻擊"],["attempt","嘗試"],
+["attention","注意力"],["autumn","秋天"],["awful","可怕的；非常糟糕的"],
+// B continued
+["baby","嬰兒"],["bad","壞的"],["ball","球"],["beautiful","美麗的"],
+["because","因為"],["become","成為"],["before","在…之前"],["believe","相信"],
+["bird","鳥"],["birthday","生日"],["both","兩者都"],["bother","打擾"],
+["boy","男孩"],["brave","勇敢的"],["bring","帶來"],["bus","公車"],
+["busy","忙碌的"],["but","但是"],["buy","買"],["by","藉由；到…時"],
+// C continued
+["cake","蛋糕"],["can","能；罐子"],["cat","貓"],["catch","抓住；搭乘"],
+["chair","椅子"],["cheap","便宜的"],["child","孩子"],["city","城市"],
+["class","班級"],["clean","乾淨的"],["climb","攀爬"],["clock","時鐘"],
+["clothes","衣服"],["cold","寒冷的"],["colorful","色彩豐富的"],["comfortable","舒適的"],
+["come","來"],["comment","評論；注解"],["communicate","溝通"],["community","社區"],
+["cook","烹飪；廚師"],["cool","涼爽的；酷"],["country","國家；鄉村"],
+["courage","勇氣"],["cry","哭泣"],["culture","文化"],
+// D continued
+["daily","每天的"],["dangerous","危險的"],["dark","黑暗的"],["decide","決定"],
+["deep","深的"],["different","不同的"],["difficult","困難的"],["direction","方向"],
+["dirty","骯髒的"],["doctor","醫生"],["dog","狗"],["door","門"],
+["dream","夢；夢想"],["dress","裙子；穿著"],["drink","喝；飲料"],["drive","駕駛"],
+// E continued
+["early","早的"],["eat","吃"],["else","否則；其他的"],["enjoy","享受"],
+["enough","足夠的"],["even","甚至；平的"],["event","事件"],["every","每個"],
+["everyone","每個人"],["everything","一切；所有事物"],["everywhere","到處"],["excited","興奮的"],
+["experience","經驗；體驗"],["explain","解釋"],["eye","眼睛"],
+// F continued
+["face","臉；面對"],["fall","秋天；跌落"],["family","家庭"],["famous","著名的"],
+["far","遠的"],["feel","感覺"],["few","幾個；少數"],["fight","戰鬥；打架"],
+["fine","好的；罰款"],["fish","魚"],["food","食物"],["forget","忘記"],
+["friend","朋友"],["from","從；由"],["fun","有趣的；樂趣"],["future","未來"],
+// G continued
+["get","得到；到達"],["gift","禮物"],["girl","女孩"],["give","給"],
+["glad","高興的"],["go","去"],["good","好的"],["great","很好的；偉大的"],
+// H continued
+["happy","快樂的"],["hard","困難的；努力地"],["have","有"],["hear","聽"],
+["heart","心臟；心"],["heavy","重的"],["hello","你好"],["help","幫忙"],
+["here","這裡"],["home","家"],["hope","希望"],["hot","熱的"],
+["hour","小時"],["house","房子"],["how","如何；多少"],["however","然而"],
+["hungry","飢餓的"],["hurry","趕快；匆忙"],["hurt","受傷；使痛"],
+// I continued
+["if","如果"],["ill","生病的"],["in","在…裡面"],["inside","在裡面"],
+["instead","反而；代替"],["interested","感興趣的"],["into","進入"],
+["introduce","介紹"],["invite","邀請"],
+// J/K/L continued
+["job","工作"],["just","只是；剛才"],["keep","保持"],["kid","孩子"],
+["kind","種類；友善的"],["know","知道"],["learn","學習"],["life","生活；生命"],
+["light","光；輕的"],["like","喜歡；像"],["listen","聽"],["little","少的；小的"],
+["live","生活；住"],["lonely","孤獨的"],["look","看"],["lose","失去；輸掉"],
+["lot","很多"],["love","愛"],["lucky","幸運的"],
+// M continued
+["make","製作；使"],["many","很多"],["maybe","也許"],["mean","意思；意味"],
+["meet","遇見；開會"],["miss","思念；錯過"],["mistake","錯誤"],["money","錢"],
+["more","更多"],["morning","早晨"],["most","最多的"],["much","很多"],
+["music","音樂"],["must","必須"],
+// N continued
+["need","需要"],["never","從不"],["news","新聞"],["night","夜晚"],
+["no","不；否"],["nothing","沒有什麼"],["now","現在"],
+// O continued
+["often","經常"],["old","老的；舊的"],["once","曾經；一次"],["only","只有"],
+["open","開"],["other","其他的"],["outside","在外面"],["own","擁有；自己的"],
+// P continued
+["park","公園；停車"],["part","部分；零件"],["past","過去的；過去"],["pay","支付"],
+["person","人"],["phone","電話"],["picture","圖片"],["piece","一片；一件"],
+["play","玩耍；演奏"],["please","請；使高興"],["popular","受歡迎的"],["pretty","漂亮的；相當"],
+["problem","問題"],["proud","驕傲的"],["put","放置"],
+// R continued
+["rain","雨；下雨"],["reach","到達；伸手"],["ready","準備好的"],["real","真實的"],
+["reason","原因；理由"],["receive","收到"],["remember","記得"],["rest","休息；其餘"],
+["rich","富有的"],["road","道路"],["room","房間；空間"],
+// S continued
+["sad","悲傷的"],["same","相同的"],["say","說"],["school","學校"],
+["see","看見"],["seem","似乎"],["send","發送"],["show","展示；節目"],
+["sleep","睡覺"],["small","小的"],["smile","微笑"],["so","所以；如此"],
+["something","某事"],["sometimes","有時候"],["soon","很快"],["sorry","對不起"],
+["speak","說話"],["spend","花費"],["spring","春天；彈簧"],["stay","停留"],
+["still","仍然；靜止的"],["story","故事"],["strong","強壯的"],["student","學生"],
+["study","學習；研究"],["success","成功"],["such","如此的；這樣的"],["summer","夏天"],
+["sure","確定的"],
+// T continued
+["take","拿；花費"],["talk","說話；談話"],["teach","教"],["tell","告訴"],
+["thank","感謝"],["then","然後"],["there","那裡"],["these","這些"],
+["think","思考"],["those","那些"],["through","通過；透過"],["time","時間"],
+["tired","疲倦的"],["today","今天"],["together","一起"],["tomorrow","明天"],
+["travel","旅行"],["try","嘗試"],["turn","轉；輪到"],["typical","典型的"],
+// U continued
+["under","在…下面"],["understand","理解"],["until","直到"],["up","向上"],
+["usual","通常的"],
+// V continued
+["very","非常"],["visit","參觀；拜訪"],["voice","聲音"],
+// W continued
+["wait","等待"],["want","想要"],["warm","溫暖的"],["watch","觀看；手錶"],
+["way","方式；道路"],["wear","穿；磨損"],["week","週；禮拜"],["well","好；井"],
+["when","當…時候"],["where","哪裡"],["which","哪一個"],["who","誰"],
+["why","為什麼"],["win","贏"],["winter","冬天"],["wish","希望；願望"],
+["with","和…一起；用"],["without","沒有"],["wonder","想知道；奇蹟"],["work","工作"],
+["world","世界"],["worry","擔心"],["wrong","錯誤的；不對的"],
+// Y/Z
+["year","年；年份"],["yesterday","昨天"],["yet","還；卻"],["young","年輕的"],
+// ── Math & Science terms ──
+["absolute value","絕對值"],["acute angle","銳角"],["area","面積"],["axis","軸"],
+["coefficient","係數"],["combination","組合"],["constant","常數"],["coordinate","座標"],
+["denominator","分母"],["derivative","導數；微分"],["determinant","行列式"],
+["diagonal","對角線"],["diameter","直徑"],["digit","數字；位數"],
+["equation","方程式"],["exponent","指數"],["factorial","階乘"],["formula","公式"],
+["fraction","分數"],["function","函數"],["graph","圖形"],["hypotenuse","斜邊"],
+["identity","恆等式；身份"],["inequality","不等式"],["infinite","無窮的"],["integer","整數"],
+["integral","積分"],["intersection","交集；交點"],["inverse","反函數；逆"],
+["irrational","無理數的"],["logarithm","對數"],["matrix","矩陣"],["median","中位數"],
+["modulo","取模；餘數"],["multiple","倍數"],["numerator","分子"],["obtuse angle","鈍角"],
+["parallel","平行的"],["percent","百分比"],["perimeter","周長"],["permutation","排列"],
+["perpendicular","垂直的"],["prime","質數；質"],["probability","機率"],
+["proportion","比例"],["quotient","商數"],["radius","半徑"],["rational","有理數的"],
+["remainder","餘數"],["sequence","數列"],["series","級數"],["slope","斜率"],
+["square root","平方根"],["subset","子集"],["sum","和；總和"],["tangent","正切；切線"],
+["union","聯集"],["variable","變數"],["vector","向量"],["vertex","頂點"],
+["volume","體積"],["zero","零"],
+// ── Competition / Contest phrases ──
+["time limit","時間限制"],["memory limit","記憶體限制"],["accepted","通過"],
+["wrong answer","答案錯誤"],["time limit exceeded","超出時間限制"],
+["memory limit exceeded","超出記憶體限制"],["runtime error","執行時期錯誤"],
+["compile error","編譯錯誤"],["output limit exceeded","超出輸出限制"],
+["subtask","子任務"],["partial credit","部分分數"],["brute force","暴力枚舉"],
+["greedy","貪心法"],["dynamic programming","動態規劃"],["divide and conquer","分治法"],
+["binary search","二分搜尋"],["depth-first search","深度優先搜尋"],
+["breadth-first search","廣度優先搜尋"],["shortest path","最短路徑"],
+["minimum spanning tree","最小生成樹"],["union find","並查集"],
+["segment tree","線段樹"],["binary indexed tree","樹狀數組"],["suffix array","後綴陣列"],
+["convex hull","凸包"],["topological sort","拓撲排序"],["knapsack","背包問題"],
+["palindrome","回文"],["anagram","字母重排"],["subsequence","子序列"],
+["substring","子字串"],["prefix sum","前綴和"],["two pointer","雙指針"],
+["sliding window","滑動視窗"],["monotonic stack","單調堆疊"],["memoization","記憶化"],
+["complexity","複雜度"],["asymptotic","漸近的"],["amortized","均攤的"],
+["worst case","最壞情況"],["average case","平均情況"],["best case","最佳情況"],
+// ── More common academic & general vocabulary ──
+["abandon","放棄"],["absence","缺席"],["accelerate","加速"],["accessible","可存取的"],
+["accuracy","準確度"],["acid","酸；酸性的"],["acknowledge","承認；確認"],
+["acquire","獲得"],["adequate","足夠的"],["allocate","分配"],
+["ambiguous","模糊的；有歧義的"],["analyze","分析"],["anticipate","預期"],
+["approximate","近似的；大約"],["arbitrary","任意的"],["architecture","架構"],
+["assess","評估"],["assign","指派"],["associate","關聯；夥伴"],
+["assumption","假設"],["asynchronous","非同步的"],["atomic","原子的"],
+["attach","附加"],["attribute","屬性"],["authenticate","驗證身份"],
+["authorization","授權"],["available","可用的"],
+["benchmark","基準測試"],["benefit","好處"],["bottleneck","瓶頸"],
+["callback","回呼函式"],["cache","快取"],["cascade","串聯；層疊"],
+["certificate","憑證；證書"],["chain","鏈；鏈表"],["channel","通道"],
+["chunk","區塊；塊"],["circular","循環的；圓形的"],["claim","聲稱；要求"],
+["classify","分類"],["cluster","群集；聚類"],["collision","碰撞；雜湊碰撞"],
+["column","列；行（直的）"],["combine","合併"],["commit","提交"],
+["compatible","相容的"],["concurrent","並行的；同時的"],["conditional","條件的"],
+["configure","配置；設定"],["consume","消耗"],["container","容器"],
+["contributor","貢獻者"],["convention","慣例；約定"],["converge","收斂"],
+["counter","計數器"],["coverage","覆蓋率"],["cursor","游標"],
+["daemon","守護程式"],["decouple","解耦"],["default","預設"],
+["defer","延遲；推遲"],["delegate","委派"],["dependency","依賴"],
+["deploy","部署"],["deprecate","廢棄"],["derive","派生；推導"],
+["diagnostic","診斷的"],["dispatch","分派；調度"],["distribute","分發"],
+["divide","劃分"],["documentation","文件化；說明文件"],
+["efficient","高效的"],["emit","發出；觸發"],["encrypt","加密"],
+["enumerate","枚舉"],["equivalent","等效的"],["evaluate","評估"],
+["exclusive","互斥的；專用的"],["export","匯出"],["external","外部的"],
+["fallback","備援；後備方案"],["fault","錯誤；故障"],["framework","框架"],
+["garbage collection","垃圾回收"],["granularity","粒度"],
+["handler","處理器；處理函式"],["heuristic","啟發式的"],["hierarchical","階層的"],
+["immutable","不可變的"],["import","匯入"],["inject","注入"],
+["inline","內聯的"],["inspect","檢查"],["install","安裝"],
+["interface","介面"],["interleave","交錯"],["internal","內部的"],
+["interoperability","互通性"],["iterate","迭代"],["lazy","延遲的；懶惰的"],
+["library","函式庫"],["lifecycle","生命週期"],["literal","字面值；字面的"],
+["logic","邏輯"],["lookup","查找"],["lossless","無損的"],["lossy","有損的"],
+["macro","巨集"],["middleware","中介軟體"],["migration","遷移"],["mock","模擬"],
+["namespace","命名空間"],["normalize","正規化"],["null","空值"],
+["observable","可觀察的"],["operate","操作；運算"],["optimize","最佳化"],
+["overhead","額外開銷"],["parallel","並行的"],["parse","解析"],
+["pipeline","管線"],["placeholder","佔位符"],["plugin","外掛"],
+["polymorphism","多型"],["port","連接埠"],["pragma","編譯指示"],
+["precompute","預計算"],["primitive","基本型別"],["profiler","效能分析器"],
+["protocol","協定"],["proxy","代理"],["query","查詢"],
+["realtime","即時的"],["recursive","遞迴的"],["refactor","重構"],
+["regex","正則表達式"],["reliable","可靠的"],["render","渲染"],
+["repository","儲存庫"],["reserved","保留的"],["rollback","回滾"],
+["runtime","執行時期"],["scalar","純量；標量"],["scheduler","調度器"],
+["schema","結構描述；綱要"],["serialize","序列化"],["socket","套接字"],
+["spawn","產生；建立（行程）"],["specification","規格"],["stack trace","呼叫堆疊追蹤"],
+["synchronize","同步"],["template","模板"],["terminal","終端機"],
+["throughput","吞吐量"],["transaction","交易"],["type safety","型別安全"],
+["undefined behavior","未定義行為"],["unit test","單元測試"],
+["virtual","虛擬的"],["volatile","揮發性的；不穩定的"],["wrapper","包裝器"],
+];
+
+// Deduplicate by lowercase english
+const seen = new Set();
+const WORDS = [];
+for(const [en,zh] of RAW){
+  const k = en.toLowerCase();
+  if(!seen.has(k)){seen.add(k);WORDS.push([en,zh]);}
+}
+WORDS.sort((a,b)=>a[0].toLowerCase().localeCompare(b[0].toLowerCase()));
+
+const letters = [...new Set(WORDS.map(w=>w[0][0].toUpperCase()))].sort();
+const alphaBar = document.getElementById('alpha-bar');
+const content = document.getElementById('content');
+const searchBox = document.getElementById('search-box');
+const noResult = document.getElementById('no-result');
+
+letters.forEach(l=>{
+  const btn = document.createElement('button');
+  btn.className='alpha-btn'; btn.dataset.l=l; btn.textContent=l;
+  btn.onclick=()=>jumpTo(l,btn);
+  alphaBar.appendChild(btn);
+});
+
+function jumpTo(letter, btn){
+  document.querySelectorAll('.alpha-btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  searchBox.value='';
+  renderAll('');
+  const sec=document.getElementById('grp-'+letter);
+  if(sec) sec.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+document.querySelector('.alpha-btn[data-l="ALL"]').onclick=()=>{
+  document.querySelectorAll('.alpha-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector('.alpha-btn[data-l="ALL"]').classList.add('active');
+  searchBox.value=''; renderAll('');
+};
+
+function renderAll(filter){
+  content.innerHTML='';
+  const q=filter?filter.trim().toLowerCase():'';
+  let anyVisible=false;
+  if(q){
+    const matches=WORDS.filter(([en,zh])=>en.toLowerCase().includes(q)||zh.includes(q));
+    if(matches.length===0){noResult.classList.remove('hidden');content.classList.add('hidden');return;}
+    noResult.classList.add('hidden');content.classList.remove('hidden');
+    const sec=document.createElement('div');
+    sec.className='letter-group';
+    const title=document.createElement('div');
+    title.className='letter-title';
+    title.textContent=`Search results (${matches.length})`;
+    sec.appendChild(title);
+    matches.forEach(([en,zh])=>sec.appendChild(makeRow(en,zh)));
+    content.appendChild(sec);
+    return;
+  }
+  noResult.classList.add('hidden');content.classList.remove('hidden');
+  const groups={};
+  WORDS.forEach(([en,zh])=>{
+    const l=en[0].toUpperCase();
+    if(!groups[l])groups[l]=[];
+    groups[l].push([en,zh]);
+  });
+  Object.keys(groups).sort().forEach(l=>{
+    anyVisible=true;
+    const sec=document.createElement('div');
+    sec.className='letter-group';
+    sec.id='grp-'+l;
+    const title=document.createElement('div');
+    title.className='letter-title';
+    title.textContent=l+' ('+groups[l].length+')';
+    sec.appendChild(title);
+    groups[l].forEach(([en,zh])=>sec.appendChild(makeRow(en,zh)));
+    content.appendChild(sec);
+  });
+}
+
+function makeRow(en,zh){
+  const row=document.createElement('div');
+  row.className='word-row';
+  const enEl=document.createElement('span');
+  enEl.className='word-en'; enEl.textContent=en;
+  const zhEl=document.createElement('span');
+  zhEl.className='word-zh'; zhEl.textContent=zh;
+  row.appendChild(enEl); row.appendChild(zhEl);
+  return row;
+}
+
+let debounce;
+searchBox.addEventListener('input',()=>{
+  clearTimeout(debounce);
+  debounce=setTimeout(()=>{
+    document.querySelectorAll('.alpha-btn').forEach(b=>b.classList.remove('active'));
+    renderAll(searchBox.value);
+  },150);
+});
+
+document.querySelector('.alpha-btn[data-l="ALL"]').classList.add('active');
+renderAll('');
+</script>
+</body>
+</html>

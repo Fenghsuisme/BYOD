@@ -45,6 +45,8 @@
                             <Button x:Name="ForwardButton" Content="前進 ▶" Padding="8,2" />
                             <Button x:Name="ReloadButton" Content="⟳ 重新整理" Padding="8,2" />
                             <Button x:Name="HomeButton" Content="⌂ 首頁" Padding="8,2" />
+                            <Button x:Name="LibraryButton" Content="[函式庫]" Padding="8,2" />
+                            <Button x:Name="DictButton" Content="[英漢字典]" Padding="8,2" />
                         </StackPanel>
                     </Border>
                     <Border Grid.Row="1" x:Name="JudgeHost" />

@@ -83,6 +83,8 @@ public partial class MainWindow : Window
         ForwardButton.Click += (_, _) => { if (_judgeBrowser?.CanGoForward == true) _judgeBrowser.GoForward(); };
         ReloadButton.Click += (_, _) => _judgeBrowser?.Reload();
         HomeButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = JudgeStartUrl; };
+        LibraryButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/library.html"; };
+        DictButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/dictionary.html"; };
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
