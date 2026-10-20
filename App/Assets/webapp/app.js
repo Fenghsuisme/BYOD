@@ -346,6 +346,28 @@
         runBtn.addEventListener("click", runCode);
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);
 
+        // ================= 下載（存至桌面） =================
+        var dlBtn = document.getElementById("dl-btn");
+        dlBtn.addEventListener("click", function () {
+            var b = bridge();
+            if (!b || dlBtn.disabled) { return; }
+            var filesJson = JSON.stringify(tabs.map(function (t) {
+                return { name: t.name, content: t.model.getValue() };
+            }));
+            dlBtn.disabled = true;
+            dlBtn.textContent = "儲存中…";
+            b.saveFiles(filesJson);
+        });
+
+        window.__saveResult = function (msg) {
+            dlBtn.disabled = false;
+            dlBtn.textContent = "⬇ 下載";
+            runStatus.textContent = msg;
+            setTimeout(function () {
+                if (runStatus.textContent === msg) { runStatus.textContent = ""; }
+            }, 4000);
+        };
+
         // ================= 面板可拖曳調整大小 =================
         setupResizers();
 

@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     private bool _proctorExit;
     private bool _logExported;
     private bool _suppressDeactivate;
+    private bool _oopMode;
 
     // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
     private readonly bool _windowed = Environment.GetEnvironmentVariable("BYOD_WINDOWED") == "1";
@@ -67,6 +68,8 @@ public partial class MainWindow : Window
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
         _bridge.RunCompleted += OnRunCompleted;
+        _bridge.SaveCompleted += msg => Dispatcher.UIThread.Post(() =>
+            RunInEditor($"window.__saveResult && window.__saveResult({JsString(msg)})"));
 
         // 判題頁複製 → 推入編輯器內部剪貼簿
         _hostBridge.PageCopied += OnPageCopied;
@@ -191,6 +194,8 @@ public partial class MainWindow : Window
         var mode = Environment.GetEnvironmentVariable("BYOD_MODE") ?? "judge";
         if (mode == "pdf")
         {
+            _oopMode = true;
+            EndExamButton.Content = "結束並退出";
             Console.WriteLine("[BYOD] 步驟2：PDF 模式，載入題目檢視器…");
             _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.PdfViewerUrl;
             JudgeHost.Child = _judgeBrowser;
@@ -397,6 +402,18 @@ public partial class MainWindow : Window
         catch
         {
             // 存檔失敗不阻擋後續流程
+        }
+
+        // OOP 模式額外將所有檔案存至桌面
+        if (_oopMode && _editorBrowser != null)
+        {
+            try
+            {
+                var filesJson = await _editorBrowser.EvaluateJavaScript<string>(
+                    "window.__collectFiles ? window.__collectFiles() : '[]'");
+                await EditorBridge.DoSaveToDesktop(filesJson);
+            }
+            catch { /* 存檔失敗不阻擋退出 */ }
         }
 
         await ExportLogsAsync();

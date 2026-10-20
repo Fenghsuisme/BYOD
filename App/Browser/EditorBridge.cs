@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using ByodKioskBrowser.Execution;
 
@@ -31,6 +33,9 @@ public sealed class EditorBridge
 
     /// <summary>編譯 / 執行完成，帶入結果 JSON（RunResult）。</summary>
     public event Action<string>? RunCompleted;
+
+    /// <summary>儲存至桌面完成，帶入顯示訊息。</summary>
+    public event Action<string>? SaveCompleted;
 
     // 以下為 JS 可呼叫的方法（皆為 void；結果另以事件回推，避免依賴回傳值 marshaling）
     public void ready() => Ready?.Invoke();
@@ -64,6 +69,47 @@ public sealed class EditorBridge
             Console.WriteLine($"[BYOD-run] runCode 完成，推回結果（{json.Length} 字元）");
             RunCompleted?.Invoke(json);
         });
+    }
+
+    /// <summary>
+    /// 把所有分頁存至桌面 Desktop/yyyy-MM-dd/（若同名資料夾已存在則直接覆蓋檔案）。
+    /// JS 傳入格式：[{name, content}, ...]
+    /// </summary>
+    public void saveFiles(string filesJson)
+    {
+        _ = Task.Run(async () =>
+        {
+            string msg;
+            try   { msg = await DoSaveToDesktop(filesJson); }
+            catch (Exception ex) { msg = "存檔失敗：" + ex.Message; }
+            SaveCompleted?.Invoke(msg);
+        });
+    }
+
+    /// <summary>將 filesJson 寫入 Desktop/yyyy-MM-dd/，回傳狀態訊息。可供 C# 直接呼叫。</summary>
+    internal static async Task<string> DoSaveToDesktop(string? filesJson)
+    {
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        if (string.IsNullOrEmpty(desktop))
+            desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
+
+        var folderName = DateTime.Now.ToString("yyyy-MM-dd");
+        var targetDir  = Path.Combine(desktop, folderName);
+        Directory.CreateDirectory(targetDir); // 已存在也安全
+
+        using var doc  = JsonDocument.Parse(filesJson ?? "[]");
+        var count = 0;
+        foreach (var el in doc.RootElement.EnumerateArray())
+        {
+            var name    = el.TryGetProperty("name",    out var n) ? n.GetString() ?? "" : "";
+            var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(name)) continue;
+            var safeName = Path.GetFileName(name);
+            if (string.IsNullOrEmpty(safeName)) continue;
+            await File.WriteAllTextAsync(Path.Combine(targetDir, safeName), content);
+            count++;
+        }
+        return $"已存至 Desktop/{folderName}/ （{count} 個檔案）";
     }
 
     // 解析所有分頁 JSON，排除當前正在編譯的主檔（避免重複寫入），回傳輔助檔（.h 等）
