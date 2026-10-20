@@ -169,12 +169,12 @@
             blocks.forEach(function(blk) {
                 var el = document.createElement('div');
                 el.className = 'block' + (blk.id === activeBlockId ? ' active' : '');
+                // click/dblclick 掛在 el 上，因為 .block-name 有 pointer-events:none
+                el.addEventListener('click', function() { activateBlock(blk.id); });
+                el.addEventListener('dblclick', function(e) { e.stopPropagation(); renameBlock(blk); });
                 var nameSpan = document.createElement('span');
                 nameSpan.className = 'block-name';
                 nameSpan.textContent = blk.name;
-                nameSpan.title = '點擊切換、雙擊改名';
-                nameSpan.addEventListener('click', function() { activateBlock(blk.id); });
-                nameSpan.addEventListener('dblclick', function() { renameBlock(blk); });
                 el.appendChild(nameSpan);
                 if (blocks.length > 1) {
                     var x = document.createElement('span');
