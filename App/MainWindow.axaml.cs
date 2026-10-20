@@ -84,8 +84,8 @@ public partial class MainWindow : Window
         ForwardButton.Click += (_, _) => { if (_judgeBrowser?.CanGoForward == true) _judgeBrowser.GoForward(); };
         ReloadButton.Click += (_, _) => _judgeBrowser?.Reload();
         HomeButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = JudgeStartUrl; };
-        LibraryButton.Click += (_, _) => { if (_judgeBrowser != null) { _suppressDeactivate = true; _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/library.html"; } };
-        DictButton.Click += (_, _) => { if (_judgeBrowser != null) { _suppressDeactivate = true; _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/dictionary.html"; } };
+        LibraryButton.Click += (_, _) => NavigateToLocalPage("library.html");
+        DictButton.Click    += (_, _) => NavigateToLocalPage("dictionary.html");
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
@@ -243,6 +243,18 @@ public partial class MainWindow : Window
     }
 
     #region 失焦偵測
+
+    private void NavigateToLocalPage(string page)
+    {
+        if (_judgeBrowser == null) return;
+        // 設定抑制旗標，並立即隱藏可能已出現的警告遮罩
+        _suppressDeactivate = true;
+        WarningOverlay.IsVisible = false;
+        _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/" + page;
+        // 2 秒後自動清除旗標，防止 Activated 未 fire 時永久抑制
+        Task.Delay(2000).ContinueWith(_ =>
+            Dispatcher.UIThread.Post(() => _suppressDeactivate = false));
+    }
 
     private void OnWindowDeactivated()
     {
