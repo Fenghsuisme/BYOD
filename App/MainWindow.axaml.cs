@@ -404,7 +404,7 @@ public partial class MainWindow : Window
 
     #region 結束考試（繳交）
 
-    /// <summary>學生按下「結束考試」：儲存所有分頁檔案與紀錄至本次資料夾，然後關閉。</summary>
+    /// <summary>學生按下「結束考試」：儲存所有分頁檔案與紀錄至本次資料夾，然後退出。</summary>
     private async Task EndExamAsync()
     {
         ConfirmOverlay.IsVisible = false;
@@ -412,59 +412,42 @@ public partial class MainWindow : Window
 
         _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
 
-        try
-        {
-            await SaveAllFilesAsync();
-        }
-        catch
-        {
-            // 存檔失敗不阻擋後續流程
-        }
+        // 只評估一次 JS（最多等 3 秒），結果同時給兩個存檔目標使用
+        var filesJson = await CollectFilesJsonAsync();
 
-        // OOP 模式額外將所有檔案存至桌面
-        if (_oopMode && _editorBrowser != null)
-        {
-            try
-            {
-                var evalTask = _editorBrowser.EvaluateJavaScript<string>(
-                    "window.__collectFiles ? window.__collectFiles() : '[]'");
-                // EvaluateJavaScript 若不設 timeout 預設無限等待；加 5 秒防止卡死
-                var completed = await Task.WhenAny(evalTask, Task.Delay(5000)) == evalTask;
-                var filesJson = completed ? (evalTask.Result ?? "[]") : "[]";
-                await EditorBridge.DoSaveToDesktop(filesJson);
-            }
-            catch { /* 存檔失敗不阻擋退出 */ }
-        }
+        // 存至考試資料夾（供監考端收取）
+        try { await SaveAllFilesAsync(filesJson); } catch { }
+
+        // OOP 模式：額外存至桌面（學生自留）
+        if (_oopMode)
+            try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
 
         await ExportLogsAsync();
-        _logExported = true;
         Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
-        _proctorExit = true; // 放行關閉
-        Close();
+
+        // Environment.Exit 保證程序一定退出
+        // （Close() 在 kiosk 全螢幕模式下不一定能結束程序）
+        Environment.Exit(0);
     }
 
-    /// <summary>向編輯器索取所有分頁內容，逐一寫入本次資料夾的 files 子目錄（由 C# 存檔，編輯器不碰檔案系統）。</summary>
-    private async Task SaveAllFilesAsync()
+    /// <summary>向編輯器請求所有分頁 JSON，最多等 3 秒，超時回傳空陣列。</summary>
+    private async Task<string> CollectFilesJsonAsync()
     {
-        if (_editorBrowser == null)
-        {
-            return;
-        }
-
-        string json;
+        if (_editorBrowser == null) return "[]";
         try
         {
-            var evalTask = _editorBrowser.EvaluateJavaScript<string>(
+            var t = _editorBrowser.EvaluateJavaScript<string>(
                 "window.__collectFiles ? window.__collectFiles() : '[]'");
-            // 加 5 秒逾時，防止 EvaluateJavaScript 無限等待
-            var completed = await Task.WhenAny(evalTask, Task.Delay(5000)) == evalTask;
-            json = completed ? (evalTask.Result ?? "") : "";
+            if (await Task.WhenAny(t, Task.Delay(3000)) == t)
+                return t.Result ?? "[]";
         }
-        catch
-        {
-            return;
-        }
+        catch { }
+        return "[]";
+    }
 
+    /// <summary>將已收集的 filesJson 寫入本次資料夾的 files 子目錄。</summary>
+    private async Task SaveAllFilesAsync(string json)
+    {
         if (string.IsNullOrWhiteSpace(json))
         {
             return;
