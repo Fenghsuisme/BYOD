@@ -127,7 +127,32 @@
         }, true);
 
         // ================= 分頁管理（多檔案） =================
-        var languageSelect = document.getElementById("language-select");
+
+        // 自製語言下拉（取代原生 <select>）
+        // 原生 select 在 macOS 上會開啟 NSMenu（原生 OS 視窗），
+        // 導致 Avalonia 觸發 Deactivated → WarningOverlay 蓋住畫面。
+        // 純 HTML div 下拉不產生任何原生視窗，徹底避免此問題。
+        var langBtn  = document.getElementById('lang-btn');
+        var langMenu = document.getElementById('lang-menu');
+        var _curLang  = 'cpp';
+        var _langLabels = { cpp: 'C++', c: 'C', h: 'Header (.h)' };
+
+        function getLang() { return _curLang; }
+
+        function setLangSilent(val) {
+            _curLang = val;
+            langBtn.querySelector('.lang-txt').textContent = _langLabels[val] || val;
+            langMenu.querySelectorAll('.lang-opt').forEach(function(el) {
+                el.classList.toggle('active', el.dataset.val === val);
+            });
+        }
+
+        langBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            langMenu.classList.toggle('hidden');
+        });
+        document.addEventListener('click', function() { langMenu.classList.add('hidden'); });
+
         var tabsEl = document.getElementById("tabs");
         var newTabBtn = document.getElementById("new-tab");
 
@@ -171,7 +196,7 @@
             if (!tab) { return; }
             activeId = id;
             editor.setModel(tab.model);
-            if (languageSelect.value !== tab.lang) { languageSelect.value = tab.lang; }
+            if (getLang() !== tab.lang) { setLangSilent(tab.lang); }
             renderTabs();
             editor.focus();
         }
@@ -196,7 +221,7 @@
             if (idx < 0) { return; }
             tabs[idx].model.dispose();
             tabs.splice(idx, 1);
-            if (tabs.length === 0) { createTab(null, "", languageSelect.value); return; }
+            if (tabs.length === 0) { createTab(null, "", getLang()); return; }
             if (activeId === id) { activateTab(tabs[Math.max(0, idx - 1)].id); }
             else { renderTabs(); }
         }
@@ -207,19 +232,25 @@
             tab.name = name;
             tab.lang = langForName(name);
             monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
-            if (tab.id === activeId && languageSelect.value !== tab.lang) { languageSelect.value = tab.lang; }
+            if (tab.id === activeId && getLang() !== tab.lang) { setLangSilent(tab.lang); }
             renderTabs();
         }
 
-        newTabBtn.addEventListener("click", function () { createTab(null, "", languageSelect.value); });
+        newTabBtn.addEventListener("click", function () { createTab(null, "", getLang()); });
 
-        languageSelect.addEventListener("change", function () {
-            var tab = activeTab();
-            if (!tab) { return; }
-            tab.lang = languageSelect.value;
-            tab.name = tab.name.replace(/\.(cpp|c|h)$/i, extForLang(tab.lang));
-            monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
-            renderTabs();
+        // 語言選項點擊（相當於原 languageSelect change 事件）
+        langMenu.querySelectorAll('.lang-opt').forEach(function(el) {
+            el.addEventListener('click', function(e) {
+                e.stopPropagation();
+                langMenu.classList.add('hidden');
+                setLangSilent(el.dataset.val);
+                var tab = activeTab();
+                if (!tab) { return; }
+                tab.lang = getLang();
+                tab.name = tab.name.replace(/\.(cpp|c|h)$/i, extForLang(tab.lang));
+                monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
+                renderTabs();
+            });
         });
 
         // ================= 內容同步 =================
@@ -244,7 +275,7 @@
             tab.lang = lang;
             tab.name = tab.name.replace(/\.(cpp|c|h)$/i, extForLang(lang));
             monaco.editor.setModelLanguage(tab.model, monacoLang(lang));
-            if (languageSelect.value !== lang) { languageSelect.value = lang; }
+            if (getLang() !== lang) { setLangSilent(lang); }
             renderTabs();
         };
 
@@ -322,7 +353,7 @@
             // 同時傳送所有分頁，讓 .h 等輔助檔案能被 #include
             try {
                 var filesJson = window.__collectFiles ? window.__collectFiles() : "[]";
-                b.runCode(languageSelect.value, editor.getValue(), stdinEl.value || "", filesJson);
+                b.runCode(getLang(), editor.getValue(), stdinEl.value || "", filesJson);
             } catch (e) {
                 finishRun();
                 setOutput("執行失敗：" + e, "error");

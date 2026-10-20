@@ -26,14 +26,53 @@ body {
     font-size: 13px;
 }
 
-#toolbar select {
+/* 自製語言下拉（取代原生 select，避免 OS native picker 觸發 Deactivated） */
+#lang-dropdown {
+    position: relative;
+}
+
+#lang-btn {
     background: #3c3c3c;
     color: #d4d4d4;
     border: 1px solid #3e3e42;
     border-radius: 3px;
-    padding: 2px 6px;
-    outline: none;
+    padding: 2px 8px 2px 8px;
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    line-height: 1.6;
 }
+
+#lang-btn:hover { background: #505050; }
+
+.lang-arrow { color: #999; font-size: 10px; pointer-events: none; }
+.lang-txt   { pointer-events: none; }
+
+#lang-menu {
+    position: absolute;
+    top: calc(100% + 3px);
+    left: 0;
+    background: #252526;
+    border: 1px solid #3e3e42;
+    border-radius: 4px;
+    z-index: 9999;
+    min-width: 100%;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+}
+
+.lang-opt {
+    padding: 6px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #d4d4d4;
+    white-space: nowrap;
+}
+
+.lang-opt:hover  { background: #094771; color: #fff; }
+.lang-opt.active { color: #9cdcfe; }
 
 #run-btn {
     background: #0e639c;

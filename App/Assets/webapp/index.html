@@ -11,12 +11,14 @@
 </head>
 <body>
     <div id="toolbar">
-        <span id="lang-label">語言：</span>
-        <select id="language-select">
-            <option value="cpp">C++</option>
-            <option value="c">C</option>
-            <option value="h">Header (.h)</option>
-        </select>
+        <div id="lang-dropdown">
+            <button id="lang-btn" type="button"><span class="lang-txt">C++</span> <span class="lang-arrow">▾</span></button>
+            <div id="lang-menu" class="hidden">
+                <div class="lang-opt" data-val="cpp">C++</div>
+                <div class="lang-opt" data-val="c">C</div>
+                <div class="lang-opt" data-val="h">Header (.h)</div>
+            </div>
+        </div>
         <button id="run-btn" title="Ctrl+Enter">▶ 執行</button>
         <button id="dl-btn" class="ref-btn" title="儲存所有分頁至桌面（依日期資料夾）">⬇ 下載</button>
         <span id="run-status"></span>
