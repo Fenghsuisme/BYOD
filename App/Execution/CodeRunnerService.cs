@@ -85,7 +85,22 @@ public sealed class CodeRunnerService
             }
 
             // ---- 編譯 ----
-            var compileArgs = $"-O2 {std} -o \"{exePath}\" \"{srcPath}\"";
+            // 收集 workDir 中所有輔助 .c/.cpp 來源檔（.h 不列入，由 #include 引入）
+            var extraSrcs = new System.Text.StringBuilder();
+            if (extraFiles != null)
+            {
+                var srcExts = isC
+                    ? new[] { ".c" }
+                    : new[] { ".cpp", ".cc", ".cxx", ".c++" };
+                foreach (var (name, _) in extraFiles)
+                {
+                    var ext = System.IO.Path.GetExtension(name).ToLowerInvariant();
+                    if (Array.Exists(srcExts, e => e == ext))
+                        extraSrcs.Append($" \"{System.IO.Path.Combine(workDir, System.IO.Path.GetFileName(name))}\"");
+                }
+            }
+            // -lm：確保 C 的 sqrt/pow/sin 等數學函式正確連結（Linux 需明確指定）
+            var compileArgs = $"-O2 {std} -o \"{exePath}\" \"{srcPath}\"{extraSrcs} -lm";
             Console.WriteLine($"[BYOD-run] 編譯：{compiler} {compileArgs}");
             ProcessOutcome compile;
             try

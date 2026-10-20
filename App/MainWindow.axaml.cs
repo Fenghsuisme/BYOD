@@ -39,7 +39,11 @@ public partial class MainWindow : Window
     private string _currentCode = string.Empty;
     private bool _proctorExit;
     private bool _logExported;
-    private bool _suppressDeactivate;
+    // WarningOverlay 防抖：Deactivated 觸發後等 200ms，
+    // 若 Activated 在此期間到達（CEF 內部焦點轉移）則取消，不顯示警示
+    private bool _deactivatePending;
+    // 導航至 local page 期間的額外 3 秒壓制視窗（雙重保護）
+    private DateTime _suppressDeactivateUntil = DateTime.MinValue;
     private bool _oopMode;
 
     // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
@@ -74,7 +78,12 @@ public partial class MainWindow : Window
         // 判題頁複製 → 推入編輯器內部剪貼簿
         _hostBridge.PageCopied += OnPageCopied;
 
-        Activated += (_, _) => Dispatcher.UIThread.Post(() => { _suppressDeactivate = false; WarningOverlay.IsVisible = false; });
+        // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
+        Activated += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            _deactivatePending = false;
+            WarningOverlay.IsVisible = false;
+        });
         Deactivated += (_, _) => Dispatcher.UIThread.Post(OnWindowDeactivated);
 
         // 結束考試按鈕與確認遮罩
@@ -196,6 +205,7 @@ public partial class MainWindow : Window
         {
             _oopMode = true;
             EndExamButton.Content = "結束並退出";
+            HomeButton.IsVisible = false;   // OOP 模式不允許導回 judge 首頁
             Console.WriteLine("[BYOD] 步驟2：PDF 模式，載入題目檢視器…");
             _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.PdfViewerUrl;
             JudgeHost.Child = _judgeBrowser;
@@ -252,20 +262,27 @@ public partial class MainWindow : Window
     private void NavigateToLocalPage(string page)
     {
         if (_judgeBrowser == null) return;
-        // 設定抑制旗標，並立即隱藏可能已出現的警告遮罩
-        _suppressDeactivate = true;
+        // 設定 3 秒壓制視窗；Activated 不會重置此時間戳，所以 CEF 多次 Activated/Deactivated 均安全
+        _suppressDeactivateUntil = DateTime.Now.AddSeconds(3);
         WarningOverlay.IsVisible = false;
         _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/" + page;
-        // 2 秒後自動清除旗標，防止 Activated 未 fire 時永久抑制
-        Task.Delay(2000).ContinueWith(_ =>
-            Dispatcher.UIThread.Post(() => _suppressDeactivate = false));
     }
 
     private void OnWindowDeactivated()
     {
-        if (_suppressDeactivate) return;
-        _detector.RecordDeactivation();
-        WarningOverlay.IsVisible = true;
+        // local page 導航的 3 秒壓制視窗
+        if (DateTime.Now < _suppressDeactivateUntil) return;
+        // 防抖：已有 pending，不重複計時
+        if (_deactivatePending) return;
+        _deactivatePending = true;
+        // 等 200ms；若 Activated 先到（CEF 內部焦點轉移）則 _deactivatePending=false → 取消
+        Task.Delay(200).ContinueWith(_ => Dispatcher.UIThread.Post(() =>
+        {
+            if (!_deactivatePending) return;   // Activated 已取消
+            _deactivatePending = false;
+            _detector.RecordDeactivation();
+            WarningOverlay.IsVisible = true;
+        }));
     }
 
     #endregion
@@ -409,8 +426,11 @@ public partial class MainWindow : Window
         {
             try
             {
-                var filesJson = await _editorBrowser.EvaluateJavaScript<string>(
+                var evalTask = _editorBrowser.EvaluateJavaScript<string>(
                     "window.__collectFiles ? window.__collectFiles() : '[]'");
+                // EvaluateJavaScript 若不設 timeout 預設無限等待；加 5 秒防止卡死
+                var completed = await Task.WhenAny(evalTask, Task.Delay(5000)) == evalTask;
+                var filesJson = completed ? (evalTask.Result ?? "[]") : "[]";
                 await EditorBridge.DoSaveToDesktop(filesJson);
             }
             catch { /* 存檔失敗不阻擋退出 */ }
@@ -434,8 +454,11 @@ public partial class MainWindow : Window
         string json;
         try
         {
-            json = await _editorBrowser.EvaluateJavaScript<string>(
+            var evalTask = _editorBrowser.EvaluateJavaScript<string>(
                 "window.__collectFiles ? window.__collectFiles() : '[]'");
+            // 加 5 秒逾時，防止 EvaluateJavaScript 無限等待
+            var completed = await Task.WhenAny(evalTask, Task.Delay(5000)) == evalTask;
+            json = completed ? (evalTask.Result ?? "") : "";
         }
         catch
         {
