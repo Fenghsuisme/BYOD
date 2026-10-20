@@ -104,9 +104,20 @@ public sealed class EditorBridge
             var name    = el.TryGetProperty("name",    out var n) ? n.GetString() ?? "" : "";
             var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
             if (string.IsNullOrEmpty(name)) continue;
-            var safeName = Path.GetFileName(name);
-            if (string.IsNullOrEmpty(safeName)) continue;
-            await File.WriteAllTextAsync(Path.Combine(targetDir, safeName), content);
+
+            // 處理 "Q1/main.cpp" 格式：只允許一層子目錄，防路徑穿越
+            name = name.Replace('\\', '/').Trim('/');
+            string relPath;
+            var slash = name.IndexOf('/');
+            if (slash > 0 && slash < name.Length - 1)
+                relPath = Path.Combine(Path.GetFileName(name[..slash]), Path.GetFileName(name[(slash + 1)..]));
+            else
+                relPath = Path.GetFileName(name);
+
+            if (string.IsNullOrEmpty(relPath)) continue;
+            var fullPath = Path.Combine(targetDir, relPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            await File.WriteAllTextAsync(fullPath, content);
             count++;
         }
         return $"已存至 Desktop/{folderName}/ （{count} 個檔案）";

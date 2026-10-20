@@ -448,10 +448,7 @@ public partial class MainWindow : Window
     /// <summary>將已收集的 filesJson 寫入本次資料夾的 files 子目錄。</summary>
     private async Task SaveAllFilesAsync(string json)
     {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return;
-        }
+        if (string.IsNullOrWhiteSpace(json)) return;
 
         var filesDir = Path.Combine(_sessionFolder, "files");
         Directory.CreateDirectory(filesDir);
@@ -461,35 +458,41 @@ public partial class MainWindow : Window
         foreach (var el in doc.RootElement.EnumerateArray())
         {
             index++;
-            var name = el.TryGetProperty("name", out var n) ? n.GetString() : null;
+            var name    = el.TryGetProperty("name",    out var n) ? n.GetString() : null;
             var content = el.TryGetProperty("content", out var c) ? c.GetString() : string.Empty;
 
-            var safeName = SanitizeFileName(name, index);
-            var path = Path.Combine(filesDir, safeName);
-            if (File.Exists(path))
-            {
-                // 檔名重複時附加序號避免覆蓋
-                path = Path.Combine(filesDir,
-                    Path.GetFileNameWithoutExtension(safeName) + "_" + index + Path.GetExtension(safeName));
-            }
-
-            await File.WriteAllTextAsync(path, content ?? string.Empty);
+            var relPath = SanitizeRelativePath(name, index);
+            var fullPath = Path.Combine(filesDir, relPath);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            await File.WriteAllTextAsync(fullPath, content ?? string.Empty);
         }
+    }
+
+    /// <summary>
+    /// 處理 "Q1/main.cpp" 格式的相對路徑：只允許一層子目錄（大題名稱），防止路徑穿越。
+    /// 無斜線時退化為純檔名處理。
+    /// </summary>
+    private static string SanitizeRelativePath(string? name, int index)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
+        name = name.Replace('\\', '/').Trim('/');
+        var slash = name.IndexOf('/');
+        if (slash > 0 && slash < name.Length - 1)
+        {
+            var dir  = SanitizeFileName(name[..slash],      0);
+            var file = SanitizeFileName(name[(slash + 1)..], index);
+            if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(file))
+                return Path.Combine(dir, file);
+        }
+        return SanitizeFileName(name, index);
     }
 
     private static string SanitizeFileName(string? name, int index)
     {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return $"file{index}.txt";
-        }
-
-        name = Path.GetFileName(name); // 去除任何目錄成分，防目錄穿越
+        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
+        name = Path.GetFileName(name);
         foreach (var ch in Path.GetInvalidFileNameChars())
-        {
             name = name.Replace(ch, '_');
-        }
-
         return string.IsNullOrWhiteSpace(name) ? $"file{index}.txt" : name;
     }
 

@@ -95,6 +95,70 @@ body {
     font-size: 12px;
 }
 
+/* 大題（Block）切換列 */
+#blockbar {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    flex: 0 0 28px;
+    background: #1a1a1a;
+    border-bottom: 1px solid #3e3e42;
+    padding: 0 6px;
+    gap: 3px;
+    overflow: hidden;
+}
+
+#block-list {
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.block {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px 0 10px;
+    background: #2a2a2a;
+    border-radius: 3px 3px 0 0;
+    color: #777;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    user-select: none;
+}
+
+.block.active  { background: #252526; color: #e8a838; border-bottom-color: #e8a838; }
+.block:hover:not(.active) { background: #333; color: #bbb; }
+.block-name    { pointer-events: none; }
+
+.block-close {
+    color: #555;
+    padding: 0 2px;
+    border-radius: 2px;
+    line-height: 1;
+    font-size: 12px;
+}
+.block-close:hover { background: #c53030; color: #fff; }
+
+#new-block {
+    background: transparent;
+    color: #777;
+    border: none;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+#new-block:hover { background: #333; color: #ccc; }
+
 /* 分頁列 */
 #tabbar {
     display: flex;
@@ -155,10 +219,11 @@ body {
 
 #new-tab:hover { background: #2d2d2d; }
 
-/* 編輯器：佔用剩餘空間 */
+/* 編輯器：佔用剩餘空間，min-height:0 確保 runner 變大時能縮小 */
 #editor {
     flex: 1 1 auto;
     min-height: 0;
+    overflow: hidden;
 }
 
 /* 可拖曳分隔線 */
@@ -178,11 +243,13 @@ body {
 
 #v-splitter:hover, #h-splitter:hover { background: #0e639c; }
 
-/* 底部執行面板 */
+/* 底部執行面板：overflow:hidden 防止長輸出自動撐高整個 panel */
 #runner {
     flex: 0 0 220px;
     display: flex;
     background: #1e1e1e;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .io-col {
@@ -190,6 +257,8 @@ body {
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .io-label {

@@ -153,12 +153,92 @@
         });
         document.addEventListener('click', function() { langMenu.classList.add('hidden'); });
 
-        var tabsEl = document.getElementById("tabs");
+        // ================= 大題（Block）管理 =================
+        var blockListEl = document.getElementById('block-list');
+        var newBlockBtn  = document.getElementById('new-block');
+        var blocks       = [];
+        var activeBlockId = null;
+        var blockSeq     = 0;
+
+        function getActiveBlock() {
+            return blocks.find(function(b) { return b.id === activeBlockId; }) || null;
+        }
+
+        function renderBlocks() {
+            blockListEl.innerHTML = '';
+            blocks.forEach(function(blk) {
+                var el = document.createElement('div');
+                el.className = 'block' + (blk.id === activeBlockId ? ' active' : '');
+                var nameSpan = document.createElement('span');
+                nameSpan.className = 'block-name';
+                nameSpan.textContent = blk.name;
+                nameSpan.title = '點擊切換、雙擊改名';
+                nameSpan.addEventListener('click', function() { activateBlock(blk.id); });
+                nameSpan.addEventListener('dblclick', function() { renameBlock(blk); });
+                el.appendChild(nameSpan);
+                if (blocks.length > 1) {
+                    var x = document.createElement('span');
+                    x.className = 'block-close';
+                    x.textContent = '×';
+                    x.title = '刪除此大題（含所有分頁）';
+                    x.addEventListener('click', function(e) { e.stopPropagation(); deleteBlock(blk.id); });
+                    el.appendChild(x);
+                }
+                blockListEl.appendChild(el);
+            });
+        }
+
+        function activateBlock(id) {
+            if (activeBlockId === id) return;
+            activeBlockId = id;
+            renderBlocks();
+            var blkTabs = tabs.filter(function(t) { return t.blockId === id; });
+            var blk = getActiveBlock();
+            if (blkTabs.length === 0) {
+                createTab(null, '', 'cpp');
+            } else {
+                var prev = blk && blk.activeTabId && blkTabs.find(function(t) { return t.id === blk.activeTabId; });
+                activateTab(prev ? prev.id : blkTabs[0].id);
+            }
+        }
+
+        function deleteBlock(id) {
+            if (blocks.length <= 1) return;
+            tabs.filter(function(t) { return t.blockId === id; }).forEach(function(t) { t.model.dispose(); });
+            tabs = tabs.filter(function(t) { return t.blockId !== id; });
+            var idx = blocks.findIndex(function(b) { return b.id === id; });
+            blocks.splice(idx, 1);
+            if (activeBlockId === id) {
+                activeBlockId = blocks[Math.max(0, idx - 1)].id;
+                var blkTabs = tabs.filter(function(t) { return t.blockId === activeBlockId; });
+                if (blkTabs.length === 0) { createTab(null, '', 'cpp'); }
+                else { activateTab(blkTabs[0].id); }
+            }
+            renderBlocks();
+            renderTabs();
+        }
+
+        function renameBlock(blk) {
+            var name = window.prompt ? window.prompt('大題名稱：', blk.name) : null;
+            if (name && name.trim()) { blk.name = name.trim(); renderBlocks(); }
+        }
+
+        newBlockBtn.addEventListener('click', function() {
+            blockSeq++;
+            var blk = { id: 'blk' + blockSeq, name: 'Q' + blockSeq, activeTabId: null };
+            blocks.push(blk);
+            activeBlockId = blk.id;
+            renderBlocks();
+            createTab(null, '', 'cpp');
+        });
+
+        // ================= 分頁管理（多檔案） =================
+        var tabsEl    = document.getElementById("tabs");
         var newTabBtn = document.getElementById("new-tab");
 
-        var tabs = [];
+        var tabs     = [];
         var activeId = null;
-        var tabSeq = 0;
+        var tabSeq   = 0;
 
         function extForLang(lang) { return lang === "c" ? ".c" : lang === "h" ? ".h" : ".cpp"; }
         function langForName(name) { return /\.c$/i.test(name) ? "c" : /\.h$/i.test(name) ? "h" : "cpp"; }
@@ -168,7 +248,7 @@
 
         function renderTabs() {
             tabsEl.innerHTML = "";
-            tabs.forEach(function (tab) {
+            tabs.filter(function(tab) { return tab.blockId === activeBlockId; }).forEach(function (tab) {
                 var el = document.createElement("div");
                 el.className = "tab" + (tab.id === activeId ? " active" : "");
 
@@ -195,6 +275,8 @@
             var tab = tabs.find(function (t) { return t.id === id; });
             if (!tab) { return; }
             activeId = id;
+            var blk = getActiveBlock();
+            if (blk) { blk.activeTabId = id; }
             editor.setModel(tab.model);
             if (getLang() !== tab.lang) { setLangSilent(tab.lang); }
             renderTabs();
@@ -207,6 +289,7 @@
             var id = "t" + tabSeq;
             var tab = {
                 id: id,
+                blockId: activeBlockId,
                 name: name || ("file" + tabSeq + extForLang(lang)),
                 lang: lang,
                 model: monaco.editor.createModel(content || "", monacoLang(lang))
@@ -221,8 +304,9 @@
             if (idx < 0) { return; }
             tabs[idx].model.dispose();
             tabs.splice(idx, 1);
-            if (tabs.length === 0) { createTab(null, "", getLang()); return; }
-            if (activeId === id) { activateTab(tabs[Math.max(0, idx - 1)].id); }
+            var blkTabs = tabs.filter(function(t) { return t.blockId === activeBlockId; });
+            if (blkTabs.length === 0) { createTab(null, "", getLang()); return; }
+            if (activeId === id) { activateTab(blkTabs[Math.max(0, blkTabs.length - 1)].id); }
             else { renderTabs(); }
         }
 
@@ -284,14 +368,24 @@
             internalClipboard = text || "";
         };
 
-        // 供 C# 端呼叫：收集所有分頁內容（結束考試時繳交）
+        // 供 C# 端呼叫：收集所有大題的分頁（結束考試時繳交 / 下載）
+        // 格式：[{name: "Q1/main.cpp", content, lang}, ...]，後端依路徑建子資料夾
         window.__collectFiles = function () {
-            return JSON.stringify(tabs.map(function (t) {
-                return { name: t.name, content: t.model.getValue(), lang: t.lang };
-            }));
+            var result = [];
+            blocks.forEach(function(blk) {
+                tabs.filter(function(t) { return t.blockId === blk.id; }).forEach(function(t) {
+                    result.push({ name: blk.name + '/' + t.name, content: t.model.getValue(), lang: t.lang });
+                });
+            });
+            return JSON.stringify(result);
         };
 
-        // 建立第一個分頁
+        // 建立第一個大題與分頁
+        blockSeq++;
+        var firstBlk = { id: 'blk' + blockSeq, name: 'Q' + blockSeq, activeTabId: null };
+        blocks.push(firstBlk);
+        activeBlockId = firstBlk.id;
+        renderBlocks();
         createTab(null, "", "cpp");
 
         // ================= 編譯 / 執行 =================
@@ -352,7 +446,11 @@
             // fire-and-forget：結果由 C# 呼叫 window.__runResult 推回
             // 同時傳送所有分頁，讓 .h 等輔助檔案能被 #include
             try {
-                var filesJson = window.__collectFiles ? window.__collectFiles() : "[]";
+                // 只編譯當前大題的分頁，避免其他大題的 main() 造成 multiple definition
+                var blkFiles = tabs.filter(function(t) { return t.blockId === activeBlockId; });
+                var filesJson = JSON.stringify(blkFiles.map(function(t) {
+                    return { name: t.name, content: t.model.getValue(), lang: t.lang };
+                }));
                 b.runCode(getLang(), editor.getValue(), stdinEl.value || "", filesJson);
             } catch (e) {
                 finishRun();
@@ -382,12 +480,9 @@
         dlBtn.addEventListener("click", function () {
             var b = bridge();
             if (!b || dlBtn.disabled) { return; }
-            var filesJson = JSON.stringify(tabs.map(function (t) {
-                return { name: t.name, content: t.model.getValue() };
-            }));
             dlBtn.disabled = true;
             dlBtn.textContent = "儲存中…";
-            b.saveFiles(filesJson);
+            b.saveFiles(window.__collectFiles());   // 所有大題一起下載
         });
 
         window.__saveResult = function (msg) {
