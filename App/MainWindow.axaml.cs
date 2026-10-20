@@ -411,16 +411,28 @@ public partial class MainWindow : Window
         StatusText.Text = "正在儲存與繳交…";
         _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
 
-        // 保底：無論後續任何步驟卡住，5 秒後必定離開
-        _ = Task.Delay(5000).ContinueWith(_ => Environment.Exit(0));
+        // 保底：5 秒後無論如何強制殺掉整個行程樹（含 CEF helper），
+        // 用 Kill 而非 Environment.Exit，確保 CefGlue shutdown hook 不會卡住
+        _ = Task.Delay(5000).ContinueWith(_ =>
+            System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: true));
 
-        var filesJson = await CollectFilesJsonAsync();
-        try { await SaveAllFilesAsync(filesJson); } catch { }
-        if (_oopMode)
-            try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
-        try { await ExportLogsAsync(); } catch { }
-        Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
-        Environment.Exit(0);
+        try
+        {
+            var filesJson = await CollectFilesJsonAsync();
+            try { await SaveAllFilesAsync(filesJson); } catch { }
+            if (_oopMode)
+                try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
+            try { await ExportLogsAsync(); } catch { }
+            Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
+        }
+        catch { }
+
+        // 優先走 Avalonia 正式關閉序列；若不支援則直接殺行程
+        if (Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime lt)
+            lt.Shutdown(0);
+        else
+            System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: true);
     }
 
     /// <summary>向編輯器請求所有分頁 JSON，最多等 2.5 秒，超時回傳空陣列。</summary>
