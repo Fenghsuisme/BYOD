@@ -39,6 +39,7 @@ public partial class MainWindow : Window
     private string _currentCode = string.Empty;
     private bool _proctorExit;
     private bool _logExported;
+    private bool _suppressDeactivate;
 
     // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
     private readonly bool _windowed = Environment.GetEnvironmentVariable("BYOD_WINDOWED") == "1";
@@ -70,7 +71,7 @@ public partial class MainWindow : Window
         // 判題頁複製 → 推入編輯器內部剪貼簿
         _hostBridge.PageCopied += OnPageCopied;
 
-        Activated += (_, _) => Dispatcher.UIThread.Post(() => WarningOverlay.IsVisible = false);
+        Activated += (_, _) => Dispatcher.UIThread.Post(() => { _suppressDeactivate = false; WarningOverlay.IsVisible = false; });
         Deactivated += (_, _) => Dispatcher.UIThread.Post(OnWindowDeactivated);
 
         // 結束考試按鈕與確認遮罩
@@ -83,8 +84,8 @@ public partial class MainWindow : Window
         ForwardButton.Click += (_, _) => { if (_judgeBrowser?.CanGoForward == true) _judgeBrowser.GoForward(); };
         ReloadButton.Click += (_, _) => _judgeBrowser?.Reload();
         HomeButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = JudgeStartUrl; };
-        LibraryButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/library.html"; };
-        DictButton.Click += (_, _) => { if (_judgeBrowser != null) _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/dictionary.html"; };
+        LibraryButton.Click += (_, _) => { if (_judgeBrowser != null) { _suppressDeactivate = true; _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/library.html"; } };
+        DictButton.Click += (_, _) => { if (_judgeBrowser != null) { _suppressDeactivate = true; _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.Scheme + "://local/dictionary.html"; } };
 
         Opened += OnOpened;
         Closing += OnWindowClosing;
@@ -245,7 +246,7 @@ public partial class MainWindow : Window
 
     private void OnWindowDeactivated()
     {
-        // 仍記錄失焦事件（寫入紀錄），但不再於畫面顯示計數
+        if (_suppressDeactivate) return;
         _detector.RecordDeactivation();
         WarningOverlay.IsVisible = true;
     }
