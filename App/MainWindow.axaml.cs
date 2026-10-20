@@ -409,37 +409,34 @@ public partial class MainWindow : Window
     {
         ConfirmOverlay.IsVisible = false;
         StatusText.Text = "正在儲存與繳交…";
-
         _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
 
-        // 只評估一次 JS（最多等 3 秒），結果同時給兩個存檔目標使用
+        // 保底：無論後續任何步驟卡住，5 秒後必定離開
+        _ = Task.Delay(5000).ContinueWith(_ => Environment.Exit(0));
+
         var filesJson = await CollectFilesJsonAsync();
-
-        // 存至考試資料夾（供監考端收取）
         try { await SaveAllFilesAsync(filesJson); } catch { }
-
-        // OOP 模式：額外存至桌面（學生自留）
         if (_oopMode)
             try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
-
-        await ExportLogsAsync();
+        try { await ExportLogsAsync(); } catch { }
         Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
-
-        // Environment.Exit 保證程序一定退出
-        // （Close() 在 kiosk 全螢幕模式下不一定能結束程序）
         Environment.Exit(0);
     }
 
-    /// <summary>向編輯器請求所有分頁 JSON，最多等 3 秒，超時回傳空陣列。</summary>
+    /// <summary>向編輯器請求所有分頁 JSON，最多等 2.5 秒，超時回傳空陣列。</summary>
     private async Task<string> CollectFilesJsonAsync()
     {
         if (_editorBrowser == null) return "[]";
         try
         {
-            var t = _editorBrowser.EvaluateJavaScript<string>(
-                "window.__collectFiles ? window.__collectFiles() : '[]'");
-            if (await Task.WhenAny(t, Task.Delay(3000)) == t)
-                return t.Result ?? "[]";
+            // 在背景執行緒呼叫，避免 EvaluateJavaScript 同步阻塞 UI thread
+            // 導致 Task.Delay 無法被排程而永遠卡住
+            var evalTask = Task.Run(async () =>
+                await _editorBrowser.EvaluateJavaScript<string>(
+                    "window.__collectFiles ? window.__collectFiles() : '[]'"));
+            var winner = await Task.WhenAny(evalTask, Task.Delay(2500));
+            if (winner == evalTask && evalTask.Status == TaskStatus.RanToCompletion)
+                return evalTask.Result ?? "[]";
         }
         catch { }
         return "[]";
