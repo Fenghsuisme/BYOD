@@ -199,6 +199,16 @@ body {
 
 .tab-name { overflow: hidden; text-overflow: ellipsis; }
 
+.rename-input {
+    width: 110px;
+    font: inherit;
+    color: #fff;
+    background: #1e1e1e;
+    border: 1px solid #007acc;
+    padding: 0 3px;
+    outline: none;
+}
+
 .tab-close {
     color: #999;
     border-radius: 3px;
@@ -289,6 +299,27 @@ body {
 
 #output.error { color: #f48771; }
 #output.ok { color: #b5cea8; }
+#output .out-err { color: #f48771; }
+#output .out-echo { color: #4ec9b0; }
+#output .out-info { color: #808080; }
+
+#run-btn.stop { background: #a1260d; }
+#run-btn.stop:hover { background: #c72e0f; }
+
+#stdin-actions { float: right; }
+#stdin-actions button {
+    margin-left: 4px;
+    padding: 0 8px;
+    line-height: 16px;
+    font-size: 11px;
+    color: #fff;
+    background: #0e639c;
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+}
+#stdin-actions button:hover { background: #1177bb; }
+#stdin.waiting { box-shadow: inset 0 0 0 1px #0e639c; }
 
 #fallback {
     position: absolute;

@@ -31,6 +31,9 @@ public sealed class EditorBridge
     /// <summary>編輯器回報一次被封鎖的外部剪貼簿 / 拖放行為。</summary>
     public event Action<string>? CheatReported;
 
+    /// <summary>執行中的即時輸出 (stream, text)；stream 為 stdout / stderr / info。</summary>
+    public event Action<string, string>? RunOutput;
+
     /// <summary>編譯 / 執行完成，帶入結果 JSON（RunResult）。</summary>
     public event Action<string>? RunCompleted;
 
@@ -47,9 +50,11 @@ public sealed class EditorBridge
     /// <summary>
     /// 觸發編譯並執行（不等待回傳）。完成後以 RunCompleted 事件回推 JSON 結果，
     /// 由 C# 呼叫 window.__runResult 顯示。
-    /// filesJson：所有分頁 [{name, content, lang}] 的 JSON，用於將 .h 等輔助檔案寫入 workDir。
+    /// filesJson：同一大題所有分頁 [{name, content, lang}] 的 JSON，用於將 .h 等輔助檔案寫入 workDir。
+    /// mainName：主檔（code）的分頁名稱，用來把它從輔助檔中排除。
+    /// interactive：true 時 stdin 保持開啟，之後以 sendInput / closeInput 輸入；輸出以 RunOutput 即時推送。
     /// </summary>
-    public void runCode(string language, string code, string stdin, string? filesJson = null)
+    public void runCode(string language, string code, string stdin, string? filesJson, string? mainName, bool interactive)
     {
         Console.WriteLine($"[BYOD-run] runCode 進入：lang={language} codeLen={(code?.Length ?? 0)} stdinLen={(stdin?.Length ?? 0)}");
         _ = Task.Run(async () =>
@@ -57,8 +62,9 @@ public sealed class EditorBridge
             string json;
             try
             {
-                var extraFiles = ParseExtraFiles(language, filesJson);
-                var result = await _runner.RunAsync(language ?? "cpp", code ?? string.Empty, stdin ?? string.Empty, extraFiles);
+                var extraFiles = ParseExtraFiles(mainName, filesJson);
+                var result = await _runner.RunAsync(language ?? "cpp", code ?? string.Empty, stdin ?? string.Empty,
+                    extraFiles, mainName, interactive, (stream, text) => RunOutput?.Invoke(stream, text));
                 json = result.ToJson();
             }
             catch (Exception ex)
@@ -70,6 +76,15 @@ public sealed class EditorBridge
             RunCompleted?.Invoke(json);
         });
     }
+
+    /// <summary>互動模式：送入一段輸入。</summary>
+    public void sendInput(string text) => _runner.SendInput(text ?? string.Empty);
+
+    /// <summary>互動模式：結束輸入（EOF）。</summary>
+    public void closeInput() => _runner.CloseInput();
+
+    /// <summary>停止目前的編譯 / 執行。</summary>
+    public void stopRun() => _runner.Stop();
 
     /// <summary>
     /// 把所有分頁存至桌面 Desktop/yyyy-MM-dd/（若同名資料夾已存在則直接覆蓋檔案）。
@@ -105,16 +120,7 @@ public sealed class EditorBridge
             var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
             if (string.IsNullOrEmpty(name)) continue;
 
-            // 處理 "Q1/main.cpp" 格式：只允許一層子目錄，防路徑穿越
-            name = name.Replace('\\', '/').Trim('/');
-            string relPath;
-            var slash = name.IndexOf('/');
-            if (slash > 0 && slash < name.Length - 1)
-                relPath = Path.Combine(Path.GetFileName(name[..slash]), Path.GetFileName(name[(slash + 1)..]));
-            else
-                relPath = Path.GetFileName(name);
-
-            if (string.IsNullOrEmpty(relPath)) continue;
+            var relPath = SanitizeRelativePath(name, count + 1);
             var fullPath = Path.Combine(targetDir, relPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             await File.WriteAllTextAsync(fullPath, content);
@@ -123,25 +129,50 @@ public sealed class EditorBridge
         return $"已存至 Desktop/{folderName}/ （{count} 個檔案）";
     }
 
-    // 解析所有分頁 JSON，排除當前正在編譯的主檔（避免重複寫入），回傳輔助檔（.h 等）
-    private static List<(string name, string content)> ParseExtraFiles(string? mainLang, string? filesJson)
+    /// <summary>
+    /// 處理 "Q1/main.cpp" 格式的相對路徑：只允許一層子目錄（大題名稱），防止路徑穿越。
+    /// 無斜線時退化為純檔名處理。
+    /// </summary>
+    internal static string SanitizeRelativePath(string? name, int index)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
+        name = name.Replace('\\', '/').Trim('/');
+        var slash = name.IndexOf('/');
+        if (slash > 0 && slash < name.Length - 1)
+        {
+            var dir  = SanitizeFileName(name[..slash],      0);
+            var file = SanitizeFileName(name[(slash + 1)..], index);
+            if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(file))
+                return Path.Combine(dir, file);
+        }
+        return SanitizeFileName(name, index);
+    }
+
+    private static string SanitizeFileName(string? name, int index)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
+        name = Path.GetFileName(name);
+        foreach (var ch in Path.GetInvalidFileNameChars())
+            name = name.Replace(ch, '_');
+        // "." / ".." 會被 Path.Combine 解讀為目前 / 上層目錄（路徑穿越）
+        if (string.IsNullOrWhiteSpace(name) || name.Trim('.').Length == 0) return $"file{index}.txt";
+        return name;
+    }
+
+    // 解析同一大題的分頁 JSON，排除主檔（已由 runCode 的 code 參數傳入），回傳輔助檔（.h / 其他 .cpp 等）
+    private static List<(string name, string content)> ParseExtraFiles(string? mainName, string? filesJson)
     {
         var result = new List<(string, string)>();
         if (string.IsNullOrEmpty(filesJson)) return result;
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(filesJson);
-            var mainExt = (mainLang ?? "cpp") switch { "c" => ".c", "h" => ".h", _ => ".cpp" };
             bool mainSeen = false;
             foreach (var el in doc.RootElement.EnumerateArray())
             {
                 var name = el.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
                 var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
-                var lang = el.TryGetProperty("lang", out var l) ? l.GetString() ?? "" : "";
-                // 跳過第一個符合主語言副檔名的分頁（那是 runCode 的 code 參數，已傳入）
-                var ext = System.IO.Path.GetExtension(name).ToLowerInvariant();
-                bool isMain = !mainSeen && (ext == mainExt || (mainLang == "cpp" && ext == ".cc"));
-                if (isMain) { mainSeen = true; continue; }
+                if (!mainSeen && name == mainName) { mainSeen = true; continue; }
                 if (!string.IsNullOrEmpty(name)) result.Add((name, content));
             }
         }

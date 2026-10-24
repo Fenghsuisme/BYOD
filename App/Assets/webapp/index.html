@@ -41,8 +41,13 @@
 
     <div id="runner">
         <div class="io-col" id="stdin-col">
-            <div class="io-label">輸入 (stdin)</div>
-            <textarea id="stdin" spellcheck="false" placeholder="在此貼上測資，執行時作為程式的標準輸入"></textarea>
+            <div class="io-label">輸入 (stdin)
+                <span id="stdin-actions" class="hidden">
+                    <button id="send-btn" type="button" title="Enter">送出 ⏎</button>
+                    <button id="eof-btn" type="button" title="結束輸入（讓 while(cin>>x) 之類的迴圈結束）">EOF</button>
+                </span>
+            </div>
+            <textarea id="stdin" spellcheck="false" placeholder="可先貼上測資再按執行；或留空直接執行，程式執行時再於此輸入（Enter 送出、Shift+Enter 換行）"></textarea>
         </div>
         <div id="h-splitter" title="拖曳調整 輸入 / 輸出 寬度"></div>
         <div class="io-col" id="output-col">

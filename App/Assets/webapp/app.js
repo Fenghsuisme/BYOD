@@ -100,6 +100,11 @@
             if (inIoPanel(e)) { return; } // 面板放行
             e.preventDefault();
             e.stopPropagation();
+            // 改名輸入框：一律擋系統剪貼簿，但不可把內部剪貼簿貼進編輯器
+            if (e.target && e.target.classList && e.target.classList.contains("rename-input")) {
+                if (kind === "paste") { notifyCheat("external-paste-blocked"); }
+                return;
+            }
             if (kind === "paste") {
                 internalPaste();
                 notifyCheat("external-paste-blocked");
@@ -139,6 +144,37 @@
 
         function getLang() { return _curLang; }
 
+        // 就地改名（取代 window.prompt：原生對話框會讓主視窗失焦而誤觸失焦警示）
+        // 名稱中的 / 與 \ 會被移除，因為繳交時以「大題/檔名」組成路徑
+        function inlineRename(host, current, onCommit) {
+            var input = document.createElement("input");
+            input.className = "rename-input";
+            input.value = current;
+            input.spellcheck = false;
+            host.innerHTML = "";
+            host.appendChild(input);
+            input.focus();
+            input.select();
+            var done = false;
+            function finish(save) {
+                if (done) { return; }
+                done = true;
+                var v = input.value.replace(/[\/\\]/g, "").trim();
+                if (save && v && v !== current) { onCommit(v); }
+                renderBlocks();
+                renderTabs();
+                editor.focus();
+            }
+            input.addEventListener("keydown", function (e) {
+                e.stopPropagation();
+                if (e.key === "Enter") { finish(true); }
+                else if (e.key === "Escape") { finish(false); }
+            });
+            input.addEventListener("blur", function () { finish(true); });
+            input.addEventListener("click", function (e) { e.stopPropagation(); });
+            input.addEventListener("dblclick", function (e) { e.stopPropagation(); });
+        }
+
         function setLangSilent(val) {
             _curLang = val;
             langBtn.querySelector('.lang-txt').textContent = _langLabels[val] || val;
@@ -171,7 +207,7 @@
                 el.className = 'block' + (blk.id === activeBlockId ? ' active' : '');
                 // click/dblclick 掛在 el 上，因為 .block-name 有 pointer-events:none
                 el.addEventListener('click', function() { activateBlock(blk.id); });
-                el.addEventListener('dblclick', function(e) { e.stopPropagation(); renameBlock(blk); });
+                el.addEventListener('dblclick', function(e) { e.stopPropagation(); renameBlock(blk, el); });
                 var nameSpan = document.createElement('span');
                 nameSpan.className = 'block-name';
                 nameSpan.textContent = blk.name;
@@ -218,9 +254,8 @@
             renderTabs();
         }
 
-        function renameBlock(blk) {
-            var name = window.prompt ? window.prompt('大題名稱：', blk.name) : null;
-            if (name && name.trim()) { blk.name = name.trim(); renderBlocks(); }
+        function renameBlock(blk, el) {
+            inlineRename(el, blk.name, function (name) { blk.name = name; });
         }
 
         newBlockBtn.addEventListener('click', function() {
@@ -257,7 +292,7 @@
                 name.textContent = tab.name;
                 name.title = "點擊切換、雙擊改名";
                 name.addEventListener("click", function () { activateTab(tab.id); });
-                name.addEventListener("dblclick", function () { renameTab(tab); });
+                name.addEventListener("dblclick", function () { renameTab(tab, name); });
 
                 var close = document.createElement("span");
                 close.className = "tab-close";
@@ -310,14 +345,13 @@
             else { renderTabs(); }
         }
 
-        function renameTab(tab) {
-            var name = window.prompt ? window.prompt("檔名：", tab.name) : null;
-            if (!name) { return; }
-            tab.name = name;
-            tab.lang = langForName(name);
-            monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
-            if (tab.id === activeId && getLang() !== tab.lang) { setLangSilent(tab.lang); }
-            renderTabs();
+        function renameTab(tab, nameEl) {
+            inlineRename(nameEl, tab.name, function (name) {
+                tab.name = name;
+                tab.lang = langForName(name);
+                monaco.editor.setModelLanguage(tab.model, monacoLang(tab.lang));
+                if (tab.id === activeId && getLang() !== tab.lang) { setLangSilent(tab.lang); }
+            });
         }
 
         newTabBtn.addEventListener("click", function () { createTab(null, "", getLang()); });
@@ -394,9 +428,33 @@
         var outputEl = document.getElementById("output");
         var runStatus = document.getElementById("run-status");
 
+        var stdinActions = document.getElementById("stdin-actions");
+        var sendBtn = document.getElementById("send-btn");
+        var eofBtn = document.getElementById("eof-btn");
+
         function setOutput(text, cls) {
             outputEl.textContent = text || "";
             outputEl.className = cls || "";
+        }
+
+        // 輸出上限（字元）；超過時從頭丟棄舊內容，避免 DOM 過大拖慢頁面
+        var OUTPUT_DOM_LIMIT = 2000000;
+        var outputLen = 0;
+
+        function appendOutput(text, cls) {
+            if (!text) { return; }
+            // 若使用者正在看底部，新輸出進來就跟著捲動
+            var atBottom = outputEl.scrollTop + outputEl.clientHeight >= outputEl.scrollHeight - 4;
+            var span = document.createElement("span");
+            if (cls) { span.className = cls; }
+            span.textContent = text;
+            outputEl.appendChild(span);
+            outputLen += text.length;
+            while (outputLen > OUTPUT_DOM_LIMIT && outputEl.firstChild && outputEl.firstChild !== span) {
+                outputLen -= (outputEl.firstChild.textContent || "").length;
+                outputEl.removeChild(outputEl.firstChild);
+            }
+            if (atBottom) { outputEl.scrollTop = outputEl.scrollHeight; }
         }
 
         function renderResult(r) {
@@ -410,25 +468,34 @@
                 setOutput("編譯錯誤：\n" + (r.stderr || r.message || ""), "error");
                 return;
             }
-            // phase === run
-            var parts = [];
-            if (r.stdout) { parts.push(r.stdout.replace(/\n$/, "")); }
-            if (r.stderr) { parts.push("[stderr]\n" + r.stderr.replace(/\n$/, "")); }
-            var footer = "\n──────────\n";
-            if (r.timedOut) {
+            // phase === run：stdout / stderr 已由 __runOutput 即時顯示，這裡只補結尾資訊
+            if (outputLen === 0) { appendOutput("(無輸出)", "out-info"); }
+            var text = outputEl.textContent;
+            var footer = (text && text.slice(-1) !== "\n" ? "\n" : "") + "──────────\n";
+            if (r.stopped || r.timedOut) {
                 footer += "⏱ " + (r.message || "執行逾時");
             } else {
                 footer += "結束代碼 " + r.exitCode + "，耗時 " + r.timeMs + " ms";
             }
-            setOutput((parts.join("\n") || "(無輸出)") + footer, r.ok ? "ok" : "error");
+            appendOutput(footer, r.ok ? "out-info" : "out-err");
         }
 
         var running = false;
+        var interactive = false;
         var runTimeout = null;
 
+        function setRunning(on, isInteractive) {
+            running = on;
+            interactive = on && isInteractive;
+            runBtn.textContent = on ? "■ 停止" : "▶ 執行";
+            runBtn.title = on ? "停止執行" : "Ctrl+Enter";
+            runBtn.classList.toggle("stop", on);
+            stdinActions.classList.toggle("hidden", !interactive);
+            stdinEl.classList.toggle("waiting", interactive);
+        }
+
         function finishRun() {
-            running = false;
-            runBtn.disabled = false;
+            setRunning(false, false);
             runStatus.textContent = "";
             if (runTimeout) { clearTimeout(runTimeout); runTimeout = null; }
         }
@@ -438,12 +505,19 @@
             var b = bridge();
             if (!b || !b.runCode) { setOutput("橋接未就緒，無法執行。", "error"); return; }
 
-            running = true;
-            runBtn.disabled = true;
-            runStatus.textContent = "編譯執行中…";
-            setOutput("");
+            // 執行前輸入欄有內容 → 批次（一次送入並 EOF）；留空 → 互動（執行中再輸入）
+            var stdinText = stdinEl.value || "";
+            var isInteractive = stdinText.trim() === "";
+            if (isInteractive) { stdinText = ""; stdinEl.value = ""; }
 
-            // fire-and-forget：結果由 C# 呼叫 window.__runResult 推回
+            setRunning(true, isInteractive);
+            runStatus.textContent = isInteractive
+                ? "編譯執行中…（可在輸入欄輸入，Enter 送出）"
+                : "編譯執行中…（已送出輸入欄的測資）";
+            setOutput("");
+            outputLen = 0;
+
+            // fire-and-forget：輸出由 __runOutput 即時推回，結束時呼叫 __runResult
             // 同時傳送所有分頁，讓 .h 等輔助檔案能被 #include
             try {
                 // 只編譯當前大題的分頁，避免其他大題的 main() 造成 multiple definition
@@ -451,18 +525,57 @@
                 var filesJson = JSON.stringify(blkFiles.map(function(t) {
                     return { name: t.name, content: t.model.getValue(), lang: t.lang };
                 }));
-                b.runCode(getLang(), editor.getValue(), stdinEl.value || "", filesJson);
+                // 目前分頁是 .h 時無法單獨編譯，改以同大題第一個 .c/.cpp 分頁為主檔
+                var mainTab = activeTab();
+                if (mainTab && mainTab.lang === "h") {
+                    mainTab = blkFiles.find(function(t) { return t.lang !== "h"; }) || mainTab;
+                }
+                b.runCode(mainTab.lang, mainTab.model.getValue(), stdinText, filesJson, mainTab.name, isInteractive);
             } catch (e) {
                 finishRun();
                 setOutput("執行失敗：" + e, "error");
                 return;
             }
 
-            // 安全逾時：萬一未收到回傳也解鎖（放寬到 60s）
+            // 安全逾時：萬一未收到回傳也解鎖（互動模式 C# 端上限 10 分鐘）
             runTimeout = setTimeout(function () {
-                if (running) { finishRun(); setOutput("執行逾時，未收到結果。", "error"); }
-            }, 60000);
+                if (running) { finishRun(); appendOutput("\n執行逾時，未收到結果。", "out-err"); }
+            }, isInteractive ? 660000 : 60000);
         }
+
+        function stopRun() {
+            var b = bridge();
+            if (running && b && b.stopRun) { b.stopRun(); }
+        }
+
+        // 互動模式：送出輸入欄內容（補上換行），並回顯在輸出區
+        function sendInput() {
+            var b = bridge();
+            if (!interactive || !b || !b.sendInput) { return; }
+            var text = stdinEl.value;
+            if (text.slice(-1) !== "\n") { text += "\n"; }
+            b.sendInput(text);
+            appendOutput(text, "out-echo");
+            stdinEl.value = "";
+            stdinEl.focus();
+        }
+
+        function sendEof() {
+            var b = bridge();
+            if (!interactive || !b || !b.closeInput) { return; }
+            if (stdinEl.value) { sendInput(); }
+            b.closeInput();
+            appendOutput("[EOF]\n", "out-info");
+            interactive = false;
+            stdinActions.classList.add("hidden");
+            stdinEl.classList.remove("waiting");
+        }
+
+        // 供 C# 端呼叫：執行中的即時輸出
+        window.__runOutput = function (stream, text) {
+            if (!running) { return; }
+            appendOutput(text, stream === "stderr" ? "out-err" : stream === "info" ? "out-info" : null);
+        };
 
         // 供 C# 端呼叫：接收編譯 / 執行結果
         window.__runResult = function (json) {
@@ -472,8 +585,17 @@
             renderResult(r);
         };
 
-        runBtn.addEventListener("click", runCode);
+        runBtn.addEventListener("click", function () { if (running) { stopRun(); } else { runCode(); } });
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCode);
+        sendBtn.addEventListener("click", sendInput);
+        eofBtn.addEventListener("click", sendEof);
+        // 互動模式：Enter 送出、Shift+Enter 換行；非執行中 Enter 照常換行（貼多行測資）
+        stdinEl.addEventListener("keydown", function (e) {
+            if (interactive && e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+                e.preventDefault();
+                sendInput();
+            }
+        });
 
         // ================= 下載（存至桌面） =================
         var dlBtn = document.getElementById("dl-btn");
