@@ -37,6 +37,15 @@ public sealed class EditorBridge
     /// <summary>編譯 / 執行完成，帶入結果 JSON（RunResult）。</summary>
     public event Action<string>? RunCompleted;
 
+    /// <summary>分頁內容變更（去抖後），帶入所有大題分頁 JSON；供繳交時取用最新版本。</summary>
+    public event Action<string>? FilesChanged;
+
+    /// <summary>回應 C# 的 __submitFiles() 請求，帶入所有大題分頁 JSON。</summary>
+    public event Action<string>? FilesSubmitted;
+
+    /// <summary>考試類別（程式設計 / OOP&amp;DS），用於桌面存檔資料夾名稱。</summary>
+    public string ExamCategory { get; set; } = "程式設計";
+
     /// <summary>儲存至桌面完成，帶入顯示訊息。</summary>
     public event Action<string>? SaveCompleted;
 
@@ -46,6 +55,10 @@ public sealed class EditorBridge
     public void codeChanged(string code) => CodeChanged?.Invoke(code ?? string.Empty);
 
     public void notifyCheat(string reason) => CheatReported?.Invoke(reason ?? string.Empty);
+
+    public void filesChanged(string filesJson) => FilesChanged?.Invoke(filesJson ?? "[]");
+
+    public void submitFiles(string filesJson) => FilesSubmitted?.Invoke(filesJson ?? "[]");
 
     /// <summary>
     /// 觸發編譯並執行（不等待回傳）。完成後以 RunCompleted 事件回推 JSON 結果，
@@ -87,7 +100,7 @@ public sealed class EditorBridge
     public void stopRun() => _runner.Stop();
 
     /// <summary>
-    /// 把所有分頁存至桌面 Desktop/yyyy-MM-dd/（若同名資料夾已存在則直接覆蓋檔案）。
+    /// 把所有分頁存至桌面 Desktop/<類別>_yyyy-MM-dd/（若同名資料夾已存在則直接覆蓋檔案）。
     /// JS 傳入格式：[{name, content}, ...]
     /// </summary>
     public void saveFiles(string filesJson)
@@ -95,20 +108,20 @@ public sealed class EditorBridge
         _ = Task.Run(async () =>
         {
             string msg;
-            try   { msg = await DoSaveToDesktop(filesJson); }
+            try   { msg = await DoSaveToDesktop(filesJson, ExamCategory); }
             catch (Exception ex) { msg = "存檔失敗：" + ex.Message; }
             SaveCompleted?.Invoke(msg);
         });
     }
 
-    /// <summary>將 filesJson 寫入 Desktop/yyyy-MM-dd/，回傳狀態訊息。可供 C# 直接呼叫。</summary>
-    internal static async Task<string> DoSaveToDesktop(string? filesJson)
+    /// <summary>將 filesJson 寫入 Desktop/&lt;類別&gt;_yyyy-MM-dd/，回傳狀態訊息。可供 C# 直接呼叫。</summary>
+    internal static async Task<string> DoSaveToDesktop(string? filesJson, string category)
     {
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
         if (string.IsNullOrEmpty(desktop))
             desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Desktop");
 
-        var folderName = DateTime.Now.ToString("yyyy-MM-dd");
+        var folderName = category + "_" + DateTime.Now.ToString("yyyy-MM-dd");
         var targetDir  = Path.Combine(desktop, folderName);
         Directory.CreateDirectory(targetDir); // 已存在也安全
 

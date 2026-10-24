@@ -39,6 +39,12 @@ public partial class MainWindow : Window
     private AvaloniaCefBrowser? _editorBrowser;
 
     private string _currentCode = string.Empty;
+    // 編輯器自動同步來的最新分頁 JSON（繳交時若即時請求逾時則以此為準）
+    private volatile string _latestFilesJson = "[]";
+    private TaskCompletionSource<string>? _submitWaiter;
+    // 考試類別：用於存檔資料夾命名
+    private readonly bool _pdfMode = Environment.GetEnvironmentVariable("BYOD_MODE") == "pdf";
+    private string ExamCategory => _pdfMode ? "OOP&DS" : "程式設計";
     private bool _ending;
     // WarningOverlay 防抖：Deactivated 觸發後等 200ms，
     // 若 Activated 在此期間到達（CEF 內部焦點轉移）則取消，不顯示警示
@@ -52,7 +58,7 @@ public partial class MainWindow : Window
 
     // 本次考試工作階段資料夾（每次啟動新建）；檔案與紀錄都存在此
     private readonly string _sessionFolder;
-    // 程式碼備份：<log 資料夾>/code_<本場開始時間>/（judge 模式按「結束考試」只存檔不關閉）
+    // 程式碼備份：<log 資料夾>/<類別>_<本場開始時間>/（judge 模式按「結束考試」只存檔不關閉）
     private readonly string _logCodeFolder;
     private readonly string _liveLogPath;
     private readonly string _exportLogPath;
@@ -61,20 +67,26 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
 
-        // 資料夾以日期時間為名（HH-mm-ss 避免同日多場衝突）
-        var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        // 資料夾以「類別_日期時間」為名（HH-mm-ss 避免同日多場衝突）
+        var stamp = ExamCategory + "_" + DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         _sessionFolder = Path.Combine(AppContext.BaseDirectory, "exams", stamp);
         // run.sh 會以 BYOD_LOG_DIR 指向專案根目錄的 logs/（與終端紀錄同處）
         var logDir = Environment.GetEnvironmentVariable("BYOD_LOG_DIR");
         if (string.IsNullOrWhiteSpace(logDir)) logDir = Path.Combine(AppContext.BaseDirectory, "logs");
-        _logCodeFolder = Path.Combine(logDir, "code_" + stamp);
+        _logCodeFolder = Path.Combine(logDir, stamp);
         Directory.CreateDirectory(_sessionFolder);
         Console.WriteLine($"[BYOD] 本場考試資料夾：{_sessionFolder}");
         _liveLogPath = Path.Combine(_sessionFolder, "events.jsonl");
         _exportLogPath = Path.Combine(_sessionFolder, "events.json");
         _detector = new CheatingDetector(_liveLogPath);
 
-        _bridge = new EditorBridge(_runner);
+        _bridge = new EditorBridge(_runner) { ExamCategory = ExamCategory };
+        _bridge.FilesChanged += json => _latestFilesJson = json;
+        _bridge.FilesSubmitted += json =>
+        {
+            _latestFilesJson = json;
+            _submitWaiter?.TrySetResult(json);
+        };
         _bridge.Ready += OnEditorReady;
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
@@ -209,8 +221,7 @@ public partial class MainWindow : Window
             }
         };
         // 依模式決定左側內容：judge（程式設計）或 題目 PDF（OOP/資料結構）
-        var mode = Environment.GetEnvironmentVariable("BYOD_MODE") ?? "judge";
-        if (mode == "pdf")
+        if (_pdfMode)
         {
             _oopMode = true;
             EndExamButton.Content = "結束並退出";
@@ -433,7 +444,7 @@ public partial class MainWindow : Window
             try { saved = await SaveAllFilesAsync(filesJson, Path.Combine(_sessionFolder, "files")); } catch { }
             try { await SaveAllFilesAsync(filesJson, _logCodeFolder); } catch { }
             if (_oopMode)
-                try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
+                try { await EditorBridge.DoSaveToDesktop(filesJson, ExamCategory); } catch { }
             try { await ExportLogsAsync(exit ? "防弊瀏覽器正常關閉。" : "已儲存作答（未關閉程式）。"); } catch { }
             Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}，程式碼備份：{_logCodeFolder}");
         }
@@ -449,23 +460,28 @@ public partial class MainWindow : Window
         _ending = false;
     }
 
-    /// <summary>向編輯器請求所有分頁 JSON，最多等 2.5 秒，超時回傳空陣列。</summary>
+    /// <summary>
+    /// 請編輯器經 JS 橋接回傳所有分頁 JSON（與「⬇ 下載」相同管道），最多等 2 秒；
+    /// 逾時則用自動同步來的最新版本。不使用 EvaluateJavaScript：在 Linux 上常逾時而回傳空結果。
+    /// </summary>
     private async Task<string> CollectFilesJsonAsync()
     {
-        if (_editorBrowser == null) return "[]";
+        if (_editorBrowser == null) return _latestFilesJson;
+        var waiter = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _submitWaiter = waiter;
         try
         {
-            // 在背景執行緒呼叫，避免 EvaluateJavaScript 同步阻塞 UI thread
-            // 導致 Task.Delay 無法被排程而永遠卡住
-            var evalTask = Task.Run(async () =>
-                await _editorBrowser.EvaluateJavaScript<string>(
-                    "window.__collectFiles ? window.__collectFiles() : '[]'"));
-            var winner = await Task.WhenAny(evalTask, Task.Delay(2500));
-            if (winner == evalTask && evalTask.Status == TaskStatus.RanToCompletion)
-                return evalTask.Result ?? "[]";
+            RunInEditor("window.__submitFiles && window.__submitFiles()");
+            var winner = await Task.WhenAny(waiter.Task, Task.Delay(2000));
+            if (winner == waiter.Task) return waiter.Task.Result;
         }
         catch { }
-        return "[]";
+        finally
+        {
+            _submitWaiter = null;
+        }
+        Console.WriteLine("[BYOD] 編輯器未即時回傳分頁，改用最近一次自動同步的內容。");
+        return _latestFilesJson;
     }
 
     /// <summary>

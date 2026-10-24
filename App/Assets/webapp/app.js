@@ -384,6 +384,7 @@
             if (syncTimer) { clearTimeout(syncTimer); }
             syncTimer = setTimeout(function () {
                 notifyCodeChanged(editor.getValue());
+                syncFiles();
             }, 250);
         });
 
@@ -411,6 +412,25 @@
 
         // 供 C# 端呼叫：收集所有大題的分頁（結束考試時繳交 / 下載）
         // 格式：[{name: "Q1/main.cpp", content, lang}, ...]，後端依路徑建子資料夾
+        // 自動同步所有分頁給 C#（內容變更 + 每 2 秒檢查改名 / 新增 / 刪除），繳交時一定有最新版本
+        var lastSyncedFiles = null;
+        function syncFiles() {
+            var b = bridge();
+            if (!b || !b.filesChanged) { return; }
+            var json = window.__collectFiles();
+            if (json !== lastSyncedFiles) {
+                lastSyncedFiles = json;
+                b.filesChanged(json);
+            }
+        }
+        setInterval(syncFiles, 2000);
+
+        // 供 C# 端呼叫：繳交時經橋接主動回傳所有分頁
+        window.__submitFiles = function () {
+            var b = bridge();
+            if (b && b.submitFiles) { b.submitFiles(window.__collectFiles()); }
+        };
+
         window.__collectFiles = function () {
             var result = [];
             blocks.forEach(function(blk) {
