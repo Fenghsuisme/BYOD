@@ -51,6 +51,15 @@ if ! command -v g++ >/dev/null 2>&1; then
     fi
 fi
 
+# 中文輸入法：CEF（X11 / GTK）要知道接哪個輸入法框架，GNOME Wayland 預設不設這些變數
+if [[ -z "${GTK_IM_MODULE:-}" ]]; then
+    if pgrep -x fcitx5 >/dev/null 2>&1 || pgrep -x fcitx >/dev/null 2>&1; then
+        export GTK_IM_MODULE=fcitx XMODIFIERS="${XMODIFIERS:-@im=fcitx}"
+    elif pgrep -x ibus-daemon >/dev/null 2>&1; then
+        export GTK_IM_MODULE=ibus XMODIFIERS="${XMODIFIERS:-@im=ibus}"
+    fi
+fi
+
 # 鎖定 GNOME 逃脫快速鍵（Alt+F4 / Alt+Tab / Super）；結束（含當機/Ctrl+C）時還原
 ./Scripts/desktop-lock.sh lock || true
 # 同時清掉 App 被保底 Kill 時來不及刪除的暫存（CEF 快取 / 題目 PDF / 編譯暫存）

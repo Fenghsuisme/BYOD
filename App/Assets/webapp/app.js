@@ -54,7 +54,8 @@
         });
 
         // ================= 剪貼簿隔離 =================
-        // 僅允許編輯器內部暫存區的複製/剪下/貼上，封鎖系統剪貼簿的外部資料。
+        // App 內（編輯器 / 輸出區 / 判題頁）複製的文字會寫入系統剪貼簿並回報 C#，兩邊可互相貼上；
+        // 編輯器貼上時，系統剪貼簿內容必須等於 App 內最後一次複製的文字，否則視為外部資料而封鎖。
         var internalClipboard = "";
 
         function getSelectedText() {
@@ -63,32 +64,26 @@
             return editor.getModel().getValueInRange(sel);
         }
 
-        function internalCopy() {
-            var text = getSelectedText();
-            if (text) { internalClipboard = text; }
+        // 寬鬆比對：忽略空白差異（HTML 選取轉文字時，各來源的換行 / 空白序列化方式不同）
+        function sameText(a, b) {
+            return (a || "").replace(/\s+/g, "") === (b || "").replace(/\s+/g, "");
         }
 
-        function internalCut() {
-            var sel = editor.getSelection();
-            var text = getSelectedText();
-            if (text) {
-                internalClipboard = text;
-                editor.executeEdits("internal-clipboard", [
-                    { range: sel, text: "", forceMoveMarkers: true }
-                ]);
+        function rememberCopy(text) {
+            if (!text) { return; }
+            internalClipboard = text;
+            var b = bridge();
+            if (b && b.copied) { b.copied(text); }
+        }
+
+        // 非編輯器元素（輸出區、輸入區）目前選取的文字
+        function domSelectedText() {
+            var a = document.activeElement;
+            if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT") && typeof a.selectionStart === "number" && a.selectionEnd > a.selectionStart) {
+                return a.value.substring(a.selectionStart, a.selectionEnd);
             }
+            return window.getSelection ? window.getSelection().toString() : "";
         }
-
-        function internalPaste() {
-            var sel = editor.getSelection();
-            editor.executeEdits("internal-clipboard", [
-                { range: sel, text: internalClipboard, forceMoveMarkers: true }
-            ]);
-        }
-
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, internalCopy);
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, internalCut);
-        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, internalPaste);
 
         // 輸入(stdin)/輸出面板允許正常複製貼上（要貼測資）；只有程式碼編輯器做剪貼簿隔離
         function inIoPanel(e) {
@@ -98,28 +93,43 @@
             return !!(t.closest && t.closest("#runner"));
         }
 
-        function blockNativeClipboard(e, kind) {
-            if (inIoPanel(e)) { return; } // 面板放行
-            e.preventDefault();
-            e.stopPropagation();
-            // 改名輸入框：一律擋系統剪貼簿，但不可把內部剪貼簿貼進編輯器
-            if (e.target && e.target.classList && e.target.classList.contains("rename-input")) {
-                if (kind === "paste") { notifyCheat("external-paste-blocked"); }
+        function onClipboard(e, kind) {
+            var isRename = !!(e.target && e.target.classList && e.target.classList.contains("rename-input"));
+            if (inIoPanel(e) || isRename) {
+                // 原生行為；複製的內容同步給判題頁 / 編輯器
+                if (kind !== "paste") { rememberCopy(domSelectedText()); }
+                else if (isRename) {
+                    var rt = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+                    if (!sameText(rt, internalClipboard)) { e.preventDefault(); notifyCheat("external-paste-blocked"); }
+                }
                 return;
             }
+            e.preventDefault();
+            e.stopPropagation();
             if (kind === "paste") {
-                internalPaste();
-                notifyCheat("external-paste-blocked");
-            } else if (kind === "copy") {
-                internalCopy();
-            } else if (kind === "cut") {
-                internalCut();
+                var text = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
+                if (!text) { return; }
+                if (!sameText(text, internalClipboard)) {
+                    notifyCheat("external-paste-blocked");
+                    return;
+                }
+                editor.trigger("keyboard", "paste", { text: text });
+                return;
+            }
+            var selText = getSelectedText();
+            if (!selText) { return; }
+            if (e.clipboardData) { e.clipboardData.setData("text/plain", selText); }
+            rememberCopy(selText);
+            if (kind === "cut") {
+                editor.executeEdits("internal-clipboard", [
+                    { range: editor.getSelection(), text: "", forceMoveMarkers: true }
+                ]);
             }
         }
 
-        document.addEventListener("paste", function (e) { blockNativeClipboard(e, "paste"); }, true);
-        document.addEventListener("copy", function (e) { blockNativeClipboard(e, "copy"); }, true);
-        document.addEventListener("cut", function (e) { blockNativeClipboard(e, "cut"); }, true);
+        document.addEventListener("paste", function (e) { onClipboard(e, "paste"); }, true);
+        document.addEventListener("copy", function (e) { onClipboard(e, "copy"); }, true);
+        document.addEventListener("cut", function (e) { onClipboard(e, "cut"); }, true);
 
         function blockDrag(e) {
             if (inIoPanel(e)) { return; }

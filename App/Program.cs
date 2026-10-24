@@ -43,14 +43,21 @@ internal static class Program
             .LogToTrace()
             .AfterSetup(_ => InitializeCef());
 
-        // Linux 於虛擬機 / 無獨立 GPU 環境，Avalonia 以 OpenGL 合成常導致 segfault。
-        // 預設改用軟體渲染（kiosk 不需 GPU 效能）；設 BYOD_GPU=1 可在真實硬體上改回 GPU。
-        if (OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("BYOD_GPU") != "1")
+        if (OperatingSystem.IsLinux())
         {
-            builder = builder.With(new X11PlatformOptions
+            var options = new X11PlatformOptions
             {
-                RenderingMode = new[] { X11RenderingMode.Software }
-            });
+                // Avalonia 介面沒有文字輸入框；關閉它的輸入法整合，避免與 CEF（Chromium）搶 ibus / fcitx
+                // 的輸入焦點，導致編輯器無法打中文
+                EnableIme = false
+            };
+            // Linux 於虛擬機 / 無獨立 GPU 環境，Avalonia 以 OpenGL 合成常導致 segfault。
+            // 預設改用軟體渲染（kiosk 不需 GPU 效能）；設 BYOD_GPU=1 可在真實硬體上改回 GPU。
+            if (Environment.GetEnvironmentVariable("BYOD_GPU") != "1")
+            {
+                options.RenderingMode = new[] { X11RenderingMode.Software };
+            }
+            builder = builder.With(options);
         }
 
         return builder;

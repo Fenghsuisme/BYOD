@@ -31,6 +31,9 @@ public sealed class EditorBridge
     /// <summary>編輯器回報一次被封鎖的外部剪貼簿 / 拖放行為。</summary>
     public event Action<string>? CheatReported;
 
+    /// <summary>使用者在編輯器 / 輸出區複製文字（已寫入系統剪貼簿），帶入該文字。</summary>
+    public event Action<string>? Copied;
+
     /// <summary>執行中的即時輸出 (stream, text)；stream 為 stdout / stderr / info。</summary>
     public event Action<string, string>? RunOutput;
 
@@ -55,6 +58,8 @@ public sealed class EditorBridge
     public void codeChanged(string code) => CodeChanged?.Invoke(code ?? string.Empty);
 
     public void notifyCheat(string reason) => CheatReported?.Invoke(reason ?? string.Empty);
+
+    public void copied(string text) => Copied?.Invoke(text ?? string.Empty);
 
     public void filesChanged(string filesJson) => FilesChanged?.Invoke(filesJson ?? "[]");
 

@@ -28,12 +28,28 @@ public partial class MainWindow : Window
     private readonly EditorBridge _bridge;
     private readonly HostBridge _hostBridge = new();
 
-    // 判題頁複製監聽：於頁面載入後注入，攔截複製並回報給 hostBridge
-    private const string JudgeCopyListenerScript =
-        "(function(){document.addEventListener('copy',function(){try{" +
-        "var t=window.getSelection?window.getSelection().toString():'';" +
-        "if(t&&window.hostBridge&&window.hostBridge.copyFromPage){window.hostBridge.copyFromPage(t);}" +
-        "}catch(e){}},true);})();";
+    // 判題頁剪貼簿監聽：於頁面載入後注入。
+    // 複製 / 剪下 → 回報 hostBridge（同步給編輯器）；貼上 → 只允許 App 內複製過的文字（忽略空白差異）。
+    private const string JudgeClipboardScript =
+        "(function(){if(window.__byodClipHooked){return;}window.__byodClipHooked=true;" +
+        "var allowed='';window.__byodSetClip=function(t){allowed=t||'';};" +
+        "function norm(s){return (s||'').replace(/\\s+/g,'');}" +
+        "function sel(){var a=document.activeElement;" +
+        "if(a&&(a.tagName==='TEXTAREA'||a.tagName==='INPUT')&&typeof a.selectionStart==='number'&&a.selectionEnd>a.selectionStart){return a.value.substring(a.selectionStart,a.selectionEnd);}" +
+        "return window.getSelection?window.getSelection().toString():'';}" +
+        "function report(t){if(!t||t===allowed){return;}allowed=t;" +
+        "if(window.hostBridge&&window.hostBridge.copyFromPage){window.hostBridge.copyFromPage(t);}}" +
+        // 擷取階段先記選取文字；冒泡階段若頁面自行寫入剪貼簿（如 ACE 編輯器）則以實際內容為準
+        "function onCap(){try{report(sel());}catch(x){}}" +
+        "function onBub(e){try{var t=e.clipboardData&&e.clipboardData.getData('text/plain');if(t){report(t);}}catch(x){}}" +
+        "['copy','cut'].forEach(function(k){window.addEventListener(k,onCap,true);document.addEventListener(k,onBub,false);});" +
+        "window.addEventListener('paste',function(e){var t='';try{t=e.clipboardData.getData('text/plain');}catch(x){}" +
+        "if(!t||norm(t)===norm(allowed)){return;}e.preventDefault();e.stopImmediatePropagation();" +
+        "if(window.hostBridge&&window.hostBridge.pasteBlocked){window.hostBridge.pasteBlocked();}},true);" +
+        "})();";
+
+    // App 內最後一次複製的文字（編輯器 / 判題頁共用），兩個瀏覽器只允許貼上它
+    private string _appClipboard = string.Empty;
 
     private AvaloniaCefBrowser? _judgeBrowser;
     private AvaloniaCefBrowser? _editorBrowser;
@@ -96,8 +112,13 @@ public partial class MainWindow : Window
         _bridge.SaveCompleted += msg => Dispatcher.UIThread.Post(() =>
             RunInEditor($"window.__saveResult && window.__saveResult({JsString(msg)})"));
 
-        // 判題頁複製 → 推入編輯器內部剪貼簿
-        _hostBridge.PageCopied += OnPageCopied;
+        // 任一邊複製 → 同步給兩個瀏覽器的允許貼上內容
+        _hostBridge.PageCopied += OnAppCopied;
+        _bridge.Copied += OnAppCopied;
+        _hostBridge.PasteBlocked += () => _detector.Record(
+            CheatingEventType.BlockedExternalPaste,
+            "評測頁已封鎖外部剪貼簿貼入。",
+            "judge-paste-blocked");
 
         // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
         Activated += (_, _) => Dispatcher.UIThread.Post(() =>
@@ -217,7 +238,8 @@ public partial class MainWindow : Window
         {
             if (e.Frame != null && e.Frame.IsMain)
             {
-                _judgeBrowser?.ExecuteJavaScript(JudgeCopyListenerScript);
+                _judgeBrowser?.ExecuteJavaScript(JudgeClipboardScript +
+                    $"window.__byodSetClip({JsString(_appClipboard)});");
             }
         };
         // 依模式決定左側內容：judge（程式設計）或 題目 PDF（OOP/資料結構）
@@ -328,12 +350,16 @@ public partial class MainWindow : Window
             reason);
     }
 
-    /// <summary>判題頁複製的文字 → 推入編輯器的內部剪貼簿（允許貼上）。</summary>
-    private void OnPageCopied(string text)
+    /// <summary>App 內複製的文字 → 同步給編輯器與判題頁（兩邊都允許貼上它）。</summary>
+    private void OnAppCopied(string text)
     {
+        if (string.IsNullOrEmpty(text)) return;
         Dispatcher.UIThread.Post(() =>
         {
-            _editorBrowser?.ExecuteJavaScript($"window.__setClipboard && window.__setClipboard({JsString(text)})");
+            _appClipboard = text;
+            var js = JsString(text);
+            _editorBrowser?.ExecuteJavaScript($"window.__setClipboard && window.__setClipboard({js})");
+            _judgeBrowser?.ExecuteJavaScript($"window.__byodSetClip && window.__byodSetClip({js})");
         });
     }
 
