@@ -34,6 +34,14 @@ public sealed class EditorBridge
     /// <summary>使用者在編輯器 / 輸出區複製文字（已寫入系統剪貼簿），帶入該文字。</summary>
     public event Action<string>? Copied;
 
+    /// <summary>使用者在頁面按下滑鼠（用來把鍵盤焦點交給這個瀏覽器）。</summary>
+    public event Action? Clicked;
+
+    public void clicked() => Clicked?.Invoke();
+
+    /// <summary>焦點欄位游標位置（CSS 像素, 裝置像素比），供輸入法選字窗定位。</summary>
+    public event Action<double, double, double, double>? CaretMoved;
+
     /// <summary>執行中的即時輸出 (stream, text)；stream 為 stdout / stderr / info。</summary>
     public event Action<string, string>? RunOutput;
 
@@ -60,6 +68,8 @@ public sealed class EditorBridge
     public void notifyCheat(string reason) => CheatReported?.Invoke(reason ?? string.Empty);
 
     public void copied(string text) => Copied?.Invoke(text ?? string.Empty);
+
+    public void caret(double x, double y, double height, double dpr) => CaretMoved?.Invoke(x, y, height, dpr);
 
     public void filesChanged(string filesJson) => FilesChanged?.Invoke(filesJson ?? "[]");
 

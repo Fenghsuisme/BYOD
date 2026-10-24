@@ -19,4 +19,14 @@ public sealed class HostBridge
     public void copyFromPage(string text) => PageCopied?.Invoke(text ?? string.Empty);
 
     public void pasteBlocked() => PasteBlocked?.Invoke();
+
+    /// <summary>使用者在頁面按下滑鼠（用來把鍵盤焦點交給這個瀏覽器）。</summary>
+    public event Action? Clicked;
+
+    public void clicked() => Clicked?.Invoke();
+
+    /// <summary>焦點欄位游標位置（CSS 像素, 裝置像素比），供輸入法選字窗定位。</summary>
+    public event Action<double, double, double, double>? CaretMoved;
+
+    public void caret(double x, double y, double height, double dpr) => CaretMoved?.Invoke(x, y, height, dpr);
 }

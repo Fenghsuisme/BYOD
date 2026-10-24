@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private readonly CodeRunnerService _runner = new();
     private readonly EditorBridge _bridge;
     private readonly HostBridge _hostBridge = new();
+    // 中文輸入：CEF 在 Linux 沒接輸入法，由我們直接連 ibus
+    private readonly ImeController _ime = new();
 
     // 判題頁剪貼簿監聽：於頁面載入後注入。
     // 複製 / 剪下 → 回報 hostBridge（同步給編輯器）；貼上 → 只允許 App 內複製過的文字（忽略空白差異）。
@@ -43,10 +45,25 @@ public partial class MainWindow : Window
         "function onCap(){try{report(sel());}catch(x){}}" +
         "function onBub(e){try{var t=e.clipboardData&&e.clipboardData.getData('text/plain');if(t){report(t);}}catch(x){}}" +
         "['copy','cut'].forEach(function(k){window.addEventListener(k,onCap,true);document.addEventListener(k,onBub,false);});" +
-        "window.addEventListener('paste',function(e){var t='';try{t=e.clipboardData.getData('text/plain');}catch(x){}" +
-        "if(!t||norm(t)===norm(allowed)){return;}e.preventDefault();e.stopImmediatePropagation();" +
-        "if(window.hostBridge&&window.hostBridge.pasteBlocked){window.hostBridge.pasteBlocked();}},true);" +
+        // 系統剪貼簿與 App 內複製的內容不同（外部資料，或系統剪貼簿同步失敗）→ 改貼 App 內的內容：
+        // 先送一個帶資料的 paste 事件給頁面（ACE 等編輯器讀 clipboardData），沒人處理再用 insertText
+        "var synth=false;" +
+        "window.addEventListener('paste',function(e){if(synth){return;}var t='';try{t=e.clipboardData.getData('text/plain');}catch(x){}" +
+        "if(norm(t)===norm(allowed)&&t){return;}e.preventDefault();e.stopImmediatePropagation();" +
+        "if(t&&window.hostBridge&&window.hostBridge.pasteBlocked){window.hostBridge.pasteBlocked();}" +
+        "if(!allowed){return;}var target=e.target||document.activeElement;var handled=false;" +
+        "try{var dt=new DataTransfer();dt.setData('text/plain',allowed);" +
+        "var ev=new ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true});" +
+        "synth=true;target.dispatchEvent(ev);handled=ev.defaultPrevented;}catch(x){}finally{synth=false;}" +
+        "if(!handled){document.execCommand('insertText',false,allowed);}},true);" +
         "})();";
+
+    // 點擊時把鍵盤焦點交給該瀏覽器：Linux 上兩個 CEF 是同一視窗內的子視窗，點擊不會自動轉移 X 鍵盤焦點，
+    // 否則在判題頁按 Ctrl+V / 打字會跑進編輯器
+    private const string FocusOnClickScript =
+        "(function(){if(window.__byodFocusHooked){return;}window.__byodFocusHooked=true;" +
+        "document.addEventListener('mousedown',function(){var b=window.editorBridge||window.hostBridge;" +
+        "if(b&&b.clicked){b.clicked();}},true);})();";
 
     // App 內最後一次複製的文字（編輯器 / 判題頁共用），兩個瀏覽器只允許貼上它
     private string _appClipboard = string.Empty;
@@ -126,6 +143,14 @@ public partial class MainWindow : Window
         };
 
         // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
+        // 選字窗跟著游標：頁面回報焦點欄位位置（CSS 像素）→ 換算成螢幕座標
+        _bridge.CaretMoved += (x, y, h, dpr) => Dispatcher.UIThread.Post(() => UpdateImeCaret(_editorBrowser, x, y, h, dpr));
+        _hostBridge.CaretMoved += (x, y, h, dpr) => Dispatcher.UIThread.Post(() => UpdateImeCaret(_judgeBrowser, x, y, h, dpr));
+        _bridge.Clicked += () => Dispatcher.UIThread.Post(() => GiveKeyboardFocus(_editorBrowser));
+        _hostBridge.Clicked += () => Dispatcher.UIThread.Post(() => GiveKeyboardFocus(_judgeBrowser));
+        Activated += (_, _) => _ime.FocusIn();
+        Deactivated += (_, _) => _ime.FocusOut();
+
         Activated += (_, _) => Dispatcher.UIThread.Post(() =>
         {
             _deactivatePending = false;
@@ -235,6 +260,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        _ = _ime.StartAsync();
+
         // 左：評測網站
         Console.WriteLine("[BYOD] 步驟1：建立 judge 瀏覽器…");
         _judgeBrowser = CreateBrowser();
@@ -243,7 +270,7 @@ public partial class MainWindow : Window
         {
             if (e.Frame != null && e.Frame.IsMain)
             {
-                _judgeBrowser?.ExecuteJavaScript(JudgeClipboardScript +
+                _judgeBrowser?.ExecuteJavaScript(JudgeClipboardScript + ImeController.CaretReporterScript + FocusOnClickScript +
                     $"window.__byodSetClip({JsString(_appClipboard)});");
             }
         };
@@ -278,6 +305,13 @@ public partial class MainWindow : Window
         // 右：本地 Monaco 編輯器（掛 JS 橋接 + 本地 app:// 資源）
         Console.WriteLine("[BYOD] 步驟4：建立 editor 瀏覽器…");
         _editorBrowser = CreateBrowser();
+        _editorBrowser.LoadEnd += (_, e) =>
+        {
+            if (e.Frame != null && e.Frame.IsMain)
+            {
+                _editorBrowser?.ExecuteJavaScript(ImeController.CaretReporterScript + FocusOnClickScript);
+            }
+        };
         Console.WriteLine("[BYOD] 步驟5：註冊 JS 橋接…");
         _editorBrowser.RegisterJavascriptObject(_bridge, "editorBridge");
         Console.WriteLine("[BYOD] 步驟6：設定 editor Address（app://）…");
@@ -302,7 +336,9 @@ public partial class MainWindow : Window
             // DownloadHandler 保持 null → 一律不允許下載
         };
 
-        ((LockdownKeyboardHandler)browser.KeyboardHandler).ProctorExitRequested += RequestProctorExit;
+        var keyboard = (LockdownKeyboardHandler)browser.KeyboardHandler;
+        keyboard.ProctorExitRequested += RequestProctorExit;
+        keyboard.ImeFilter = _ime.FilterKey;
         return browser;
     }
 
@@ -381,6 +417,25 @@ public partial class MainWindow : Window
                 }
             }
         });
+    }
+
+    private static void GiveKeyboardFocus(AvaloniaCefBrowser? browser)
+    {
+        try
+        {
+            (browser?.LifeSpanHandler as BlockPopupLifeSpanHandler)?.Browser?.GetHost().SetFocus(true);
+        }
+        catch
+        {
+            // 瀏覽器尚未建立完成；忽略
+        }
+    }
+
+    private void UpdateImeCaret(Control? browser, double x, double y, double height, double dpr)
+    {
+        if (browser == null || !_ime.IsActive) return;
+        var origin = browser.PointToScreen(new Point(0, 0));
+        _ime.SetCaret(origin.X + (int)(x * dpr), origin.Y + (int)(y * dpr), (int)(height * dpr));
     }
 
     /// <summary>PDF 模式：背景由 Google Drive 下載題目 PDF，完成後設定快取路徑供 app://local/exam.pdf 提供。</summary>

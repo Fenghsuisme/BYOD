@@ -55,7 +55,7 @@
 
         // ================= 剪貼簿隔離 =================
         // App 內（編輯器 / 輸出區 / 判題頁）複製的文字會寫入系統剪貼簿並回報 C#，兩邊可互相貼上；
-        // 編輯器貼上時，系統剪貼簿內容必須等於 App 內最後一次複製的文字，否則視為外部資料而封鎖。
+        // 編輯器貼上時，系統剪貼簿內容必須等於 App 內最後一次複製的文字，否則改貼 App 內的內容（外部資料不會進來）。
         var internalClipboard = "";
 
         function getSelectedText() {
@@ -107,13 +107,13 @@
             e.preventDefault();
             e.stopPropagation();
             if (kind === "paste") {
+                // 系統剪貼簿與 App 內最後一次複製的內容不同（外部資料，或同步失敗）→ 改貼 App 內的內容
                 var text = e.clipboardData ? e.clipboardData.getData("text/plain") : "";
-                if (!text) { return; }
-                if (!sameText(text, internalClipboard)) {
-                    notifyCheat("external-paste-blocked");
-                    return;
+                if (!text || !sameText(text, internalClipboard)) {
+                    if (text) { notifyCheat("external-paste-blocked"); }
+                    text = internalClipboard;
                 }
-                editor.trigger("keyboard", "paste", { text: text });
+                if (text) { editor.trigger("keyboard", "paste", { text: text }); }
                 return;
             }
             var selText = getSelectedText();

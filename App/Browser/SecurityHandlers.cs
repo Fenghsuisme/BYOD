@@ -59,6 +59,15 @@ public sealed class BlockPopupLifeSpanHandler : LifeSpanHandler
         _detector = detector;
     }
 
+    /// <summary>此實例對應的 CEF 瀏覽器（建立完成後才有值），用來指定鍵盤焦點。</summary>
+    public CefBrowser? Browser { get; private set; }
+
+    protected override void OnAfterCreated(CefBrowser browser)
+    {
+        Browser ??= browser;
+        base.OnAfterCreated(browser);
+    }
+
     protected override bool OnBeforePopup(
         CefBrowser browser, CefFrame frame, string targetUrl, string targetFrameName,
         CefWindowOpenDisposition targetDisposition, bool userGesture, CefPopupFeatures popupFeatures,
@@ -122,6 +131,9 @@ public sealed class LockdownKeyboardHandler : KeyboardHandler
     /// <summary>偵測到監考離開熱鍵（Ctrl+Alt+Shift+Q）時觸發。</summary>
     public event System.Action? ProctorExitRequested;
 
+    /// <summary>輸入法攔截（中文輸入）：回傳 true 表示按鍵已被輸入法處理。</summary>
+    public System.Func<CefBrowser, CefKeyEvent, bool>? ImeFilter { get; set; }
+
     public LockdownKeyboardHandler(ICheatingDetector detector)
     {
         _detector = detector;
@@ -148,7 +160,7 @@ public sealed class LockdownKeyboardHandler : KeyboardHandler
 
         if (keyEvent.EventType != CefKeyEventType.RawKeyDown && keyEvent.EventType != CefKeyEventType.KeyDown)
         {
-            return false;
+            return ImeFilter?.Invoke(browser, keyEvent) ?? false;
         }
 
         var ctrl = keyEvent.Modifiers.HasFlag(CefEventFlags.ControlDown)
@@ -180,6 +192,6 @@ public sealed class LockdownKeyboardHandler : KeyboardHandler
             return true; // 事件已處理，不傳遞給頁面
         }
 
-        return false;
+        return ImeFilter?.Invoke(browser, keyEvent) ?? false;
     }
 }
