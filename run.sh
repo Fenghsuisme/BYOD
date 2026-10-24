@@ -51,14 +51,25 @@ if ! command -v g++ >/dev/null 2>&1; then
     fi
 fi
 
-# 中文輸入法：CEF（X11 / GTK）要知道接哪個輸入法框架，GNOME Wayland 預設不設這些變數
-if [[ -z "${GTK_IM_MODULE:-}" ]]; then
+# 中文輸入法：CEF（X11 / GTK3）要知道接哪個輸入法框架，GNOME Wayland 預設不設這些變數。
+# 可用 BYOD_IM=ibus|xim|fcitx|keep 強制指定（keep = 不動系統設定）；未指定時自動判斷：
+#   ibus 執行中且有 GTK3 ibus 模組 → ibus；沒有模組 → xim（走 XWayland 的 XIM，GNOME 會啟動 ibus-x11）
+gtk3_immod() { ls /usr/lib/*/gtk-3.0/3.0.0/immodules/im-"$1".so /usr/lib/gtk-3.0/3.0.0/immodules/im-"$1".so 2>/dev/null | head -n1; }
+IM="${BYOD_IM:-auto}"
+if [[ "$IM" == "auto" ]]; then
     if pgrep -x fcitx5 >/dev/null 2>&1 || pgrep -x fcitx >/dev/null 2>&1; then
-        export GTK_IM_MODULE=fcitx XMODIFIERS="${XMODIFIERS:-@im=fcitx}"
+        IM=fcitx
     elif pgrep -x ibus-daemon >/dev/null 2>&1; then
-        export GTK_IM_MODULE=ibus XMODIFIERS="${XMODIFIERS:-@im=ibus}"
+        if [[ -n "$(gtk3_immod ibus)" ]]; then IM=ibus; else IM=xim; fi
+    else
+        IM=keep
     fi
 fi
+case "$IM" in
+    ibus)  export GTK_IM_MODULE=ibus  XMODIFIERS=@im=ibus ;;
+    fcitx) export GTK_IM_MODULE=fcitx XMODIFIERS=@im=fcitx ;;
+    xim)   export GTK_IM_MODULE=xim   XMODIFIERS="${XMODIFIERS:-@im=ibus}" ;;
+esac
 
 # 鎖定 GNOME 逃脫快速鍵（Alt+F4 / Alt+Tab / Super）；結束（含當機/Ctrl+C）時還原
 ./Scripts/desktop-lock.sh lock || true
@@ -77,7 +88,13 @@ export BYOD_LOG_DIR="$PWD/logs"
 LOG="logs/terminal_$(date +%Y-%m-%d_%H-%M-%S).log"
 echo "啟動中…"
 echo "終端輸出將同時記錄到：$LOG"
+{
+    echo "[BYOD] 輸入法：BYOD_IM=$IM GTK_IM_MODULE=${GTK_IM_MODULE:-} XMODIFIERS=${XMODIFIERS:-}" \
+         "XDG_SESSION_TYPE=${XDG_SESSION_TYPE:-} LANG=${LANG:-}"
+    echo "[BYOD] GTK3 ibus 模組：$(gtk3_immod ibus || true)"
+    echo "[BYOD] 輸入法行程：$(pgrep -a 'ibus|fcitx' 2>/dev/null | tr '\n' ';' || true)"
+} | tee "$LOG"
 
 # 用 tee 同時輸出到畫面與檔案；保留 dotnet run 的結束碼
 set -o pipefail
-dotnet run --project App/ByodKioskBrowser.App.csproj "$@" 2>&1 | tee "$LOG"
+dotnet run --project App/ByodKioskBrowser.App.csproj "$@" 2>&1 | tee -a "$LOG"

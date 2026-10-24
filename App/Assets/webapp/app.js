@@ -127,6 +127,21 @@
             }
         }
 
+        // 編輯器的 Ctrl+C / Ctrl+X 不走 Chromium 原生 copy：回報 C#，由 C# 寫入系統剪貼簿
+        // （Linux CEF 上原生 copy 寫入的內容，判題頁貼不到）
+        function copySelection(cut) {
+            var text = getSelectedText();
+            if (!text) { return; }
+            rememberCopy(text);
+            if (cut) {
+                editor.executeEdits("internal-clipboard", [
+                    { range: editor.getSelection(), text: "", forceMoveMarkers: true }
+                ]);
+            }
+        }
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyC, function () { copySelection(false); });
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, function () { copySelection(true); });
+
         document.addEventListener("paste", function (e) { onClipboard(e, "paste"); }, true);
         document.addEventListener("copy", function (e) { onClipboard(e, "copy"); }, true);
         document.addEventListener("cut", function (e) { onClipboard(e, "cut"); }, true);

@@ -113,12 +113,17 @@ public partial class MainWindow : Window
             RunInEditor($"window.__saveResult && window.__saveResult({JsString(msg)})"));
 
         // 任一邊複製 → 同步給兩個瀏覽器的允許貼上內容
-        _hostBridge.PageCopied += OnAppCopied;
-        _bridge.Copied += OnAppCopied;
-        _hostBridge.PasteBlocked += () => _detector.Record(
-            CheatingEventType.BlockedExternalPaste,
-            "評測頁已封鎖外部剪貼簿貼入。",
-            "judge-paste-blocked");
+        // 判題頁的複製走 Chromium 原生流程（已寫入系統剪貼簿）；編輯器的複製由 C# 寫入系統剪貼簿
+        _hostBridge.PageCopied += text => OnAppCopied(text, writeSystemClipboard: false);
+        _bridge.Copied += text => OnAppCopied(text, writeSystemClipboard: true);
+        _hostBridge.PasteBlocked += () =>
+        {
+            Console.WriteLine($"[BYOD] 評測頁擋下外部貼上（App 內剪貼簿 {_appClipboard.Length} 字）。");
+            _detector.Record(
+                CheatingEventType.BlockedExternalPaste,
+                "評測頁已封鎖外部剪貼簿貼入。",
+                "judge-paste-blocked");
+        };
 
         // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
         Activated += (_, _) => Dispatcher.UIThread.Post(() =>
@@ -350,16 +355,31 @@ public partial class MainWindow : Window
             reason);
     }
 
-    /// <summary>App 內複製的文字 → 同步給編輯器與判題頁（兩邊都允許貼上它）。</summary>
-    private void OnAppCopied(string text)
+    /// <summary>
+    /// App 內複製的文字 → 同步給編輯器與判題頁（兩邊都允許貼上它）。
+    /// 編輯器複製時另由 Avalonia 寫入系統剪貼簿：Linux CEF 上編輯器靠 Chromium 原生 copy 寫入的內容，判題頁讀不到。
+    /// </summary>
+    private void OnAppCopied(string text, bool writeSystemClipboard)
     {
         if (string.IsNullOrEmpty(text)) return;
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(async () =>
         {
             _appClipboard = text;
+            Console.WriteLine($"[BYOD] 複製 {text.Length} 字（來源：{(writeSystemClipboard ? "編輯器" : "評測頁")}）。");
             var js = JsString(text);
             _editorBrowser?.ExecuteJavaScript($"window.__setClipboard && window.__setClipboard({js})");
             _judgeBrowser?.ExecuteJavaScript($"window.__byodSetClip && window.__byodSetClip({js})");
+            if (writeSystemClipboard && Clipboard != null)
+            {
+                try
+                {
+                    await Clipboard.SetTextAsync(text);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[BYOD] 寫入系統剪貼簿失敗：{ex.Message}");
+                }
+            }
         });
     }
 
