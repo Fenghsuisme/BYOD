@@ -163,12 +163,13 @@ public sealed class CodeRunnerService
             var compileArgs = new List<string> { "-O2", std, "-o", exePath, srcPath };
             if (extraFiles != null)
             {
+                // 同大題其他定義了 main() 的來源檔（另一份解答 / 草稿）不連結，避免 multiple definition of main
                 var added = new HashSet<string> { srcName };
-                foreach (var (name, _) in extraFiles)
+                foreach (var (name, content) in extraFiles)
                 {
                     var safeName = Path.GetFileName(name);
                     var ext = Path.GetExtension(safeName).ToLowerInvariant();
-                    if (Array.Exists(srcExts, e => e == ext) && added.Add(safeName))
+                    if (Array.Exists(srcExts, e => e == ext) && !DefinesMain(content) && added.Add(safeName))
                         compileArgs.Add(Path.Combine(workDir, safeName));
                 }
             }
@@ -362,6 +363,16 @@ public sealed class CodeRunnerService
             };
         });
     }
+
+    // 去除註解與字串 / 字元常值後，判斷是否出現 main(
+    private static readonly System.Text.RegularExpressions.Regex CommentsAndLiterals = new(
+        @"//[^\n]*|/\*.*?\*/|""(?:\\.|[^""\\\n])*""|'(?:\\.|[^'\\\n])*'",
+        System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    private static readonly System.Text.RegularExpressions.Regex MainCall = new(@"\bmain\s*\(");
+
+    internal static bool DefinesMain(string? source) =>
+        !string.IsNullOrEmpty(source) && MainCall.IsMatch(CommentsAndLiterals.Replace(source, " "));
 
     private static double CpuTimeMs(Process process)
     {

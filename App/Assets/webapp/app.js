@@ -207,7 +207,8 @@
                 el.className = 'block' + (blk.id === activeBlockId ? ' active' : '');
                 // click/dblclick 掛在 el 上，因為 .block-name 有 pointer-events:none
                 el.addEventListener('click', function() { activateBlock(blk.id); });
-                el.addEventListener('dblclick', function(e) { e.stopPropagation(); renameBlock(blk, el); });
+                el.dataset.blockId = blk.id;
+                el.addEventListener('dblclick', function(e) { e.stopPropagation(); renameBlock(blk); });
                 var nameSpan = document.createElement('span');
                 nameSpan.className = 'block-name';
                 nameSpan.textContent = blk.name;
@@ -254,7 +255,10 @@
             renderTabs();
         }
 
-        function renameBlock(blk, el) {
+        // 雙擊前的兩次 click 會重繪列表，所以改名時才去找「目前畫面上」的元素
+        function renameBlock(blk) {
+            var el = blockListEl.querySelector('.block[data-block-id="' + blk.id + '"]');
+            if (!el) { return; }
             inlineRename(el, blk.name, function (name) { blk.name = name; });
         }
 
@@ -292,7 +296,8 @@
                 name.textContent = tab.name;
                 name.title = "點擊切換、雙擊改名";
                 name.addEventListener("click", function () { activateTab(tab.id); });
-                name.addEventListener("dblclick", function () { renameTab(tab, name); });
+                name.dataset.tabId = tab.id;
+                name.addEventListener("dblclick", function () { renameTab(tab); });
 
                 var close = document.createElement("span");
                 close.className = "tab-close";
@@ -345,7 +350,9 @@
             else { renderTabs(); }
         }
 
-        function renameTab(tab, nameEl) {
+        function renameTab(tab) {
+            var nameEl = tabsEl.querySelector('.tab-name[data-tab-id="' + tab.id + '"]');
+            if (!nameEl) { return; }
             inlineRename(nameEl, tab.name, function (name) {
                 tab.name = name;
                 tab.lang = langForName(name);
