@@ -407,10 +407,8 @@ public partial class MainWindow : Window
         StatusText.Text = "正在儲存與繳交…";
         _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
 
-        // 保底：5 秒後無論如何強制殺掉整個行程樹（含 CEF helper），
-        // 用 Kill 而非 Environment.Exit，確保 CefGlue shutdown hook 不會卡住
-        _ = Task.Delay(5000).ContinueWith(_ =>
-            System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: true));
+        // 保底：5 秒後無論如何強制結束（含 CEF 子行程），避免 CEF 關閉流程卡住
+        _ = Task.Delay(5000).ContinueWith(_ => Program.HardExit());
 
         try
         {
@@ -423,12 +421,16 @@ public partial class MainWindow : Window
         }
         catch { }
 
+        // OOP（PDF）模式：存檔完成即直接結束，不走 CEF 關閉流程（實測會卡住）
+        if (_oopMode)
+            Program.HardExit();
+
         // 優先走 Avalonia 正式關閉序列；若不支援則直接殺行程
         if (Application.Current?.ApplicationLifetime
             is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime lt)
             lt.Shutdown(0);
         else
-            System.Diagnostics.Process.GetCurrentProcess().Kill(entireProcessTree: true);
+            Program.HardExit();
     }
 
     /// <summary>向編輯器請求所有分頁 JSON，最多等 2.5 秒，超時回傳空陣列。</summary>

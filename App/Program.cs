@@ -138,6 +138,11 @@ internal static class Program
             // 忽略
         }
 
+        DeleteCacheDir();
+    }
+
+    private static void DeleteCacheDir()
+    {
         try
         {
             if (!string.IsNullOrEmpty(CachePath) && Directory.Exists(CachePath))
@@ -149,5 +154,78 @@ internal static class Program
         {
             // 檔案可能仍被釋放中的行程鎖定；忽略
         }
+    }
+
+    /// <summary>
+    /// 立即結束整個程式，不經過 CefRuntime.Shutdown（它在 Linux 上可能卡住）。
+    /// 先刪暫存（Linux 可刪除仍開啟中的檔案），再殺 CEF 子行程，最後殺自己。
+    /// 注意：Process.Kill(entireProcessTree: true) 不可用在自己身上（會丟 InvalidOperationException），
+    /// 所以子行程逐一以 tree 方式殺，自己用一般 Kill()。
+    /// </summary>
+    public static void HardExit()
+    {
+        try
+        {
+            var pdf = LocalAssetSchemeHandlerFactory.PdfCachePath;
+            if (!string.IsNullOrEmpty(pdf) && File.Exists(pdf))
+            {
+                File.Delete(pdf);
+            }
+        }
+        catch
+        {
+            // 忽略
+        }
+
+        foreach (var child in ChildProcessIds())
+        {
+            try { System.Diagnostics.Process.GetProcessById(child).Kill(entireProcessTree: true); } catch { }
+        }
+
+        DeleteCacheDir();
+
+        try { Console.Out.Flush(); } catch { }
+        System.Diagnostics.Process.GetCurrentProcess().Kill();
+    }
+
+    /// <summary>Linux：掃描 /proc 找出父行程為自己的子行程（CEF renderer / gpu / zygote 等）。</summary>
+    private static List<int> ChildProcessIds()
+    {
+        var result = new List<int>();
+        if (!OperatingSystem.IsLinux())
+        {
+            return result;
+        }
+
+        var self = Environment.ProcessId;
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories("/proc"))
+            {
+                if (!int.TryParse(Path.GetFileName(dir), out var pid) || pid == self)
+                {
+                    continue;
+                }
+                try
+                {
+                    // /proc/<pid>/stat：「pid (comm) state ppid …」，comm 可能含空白，故從最後的 ')' 之後解析
+                    var stat = File.ReadAllText(Path.Combine(dir, "stat"));
+                    var fields = stat[(stat.LastIndexOf(')') + 2)..].Split(' ');
+                    if (fields.Length > 1 && int.TryParse(fields[1], out var ppid) && ppid == self)
+                    {
+                        result.Add(pid);
+                    }
+                }
+                catch
+                {
+                    // 行程可能已結束
+                }
+            }
+        }
+        catch
+        {
+            // 忽略
+        }
+        return result;
     }
 }
