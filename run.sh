@@ -66,7 +66,7 @@ mkdir -p logs
 # 「結束考試」時學生程式碼備份至 logs/code_<時間>/
 export BYOD_LOG_DIR="$PWD/logs"
 LOG="logs/terminal_$(date +%Y-%m-%d_%H-%M-%S).log"
-echo "啟動中…（離開：Ctrl+Alt+Shift+Q 或右上「結束考試」）"
+echo "啟動中…"
 echo "終端輸出將同時記錄到：$LOG"
 
 # 用 tee 同時輸出到畫面與檔案；保留 dotnet run 的結束碼
