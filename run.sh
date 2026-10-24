@@ -63,6 +63,8 @@ trap cleanup EXIT
 
 # 終端輸出（含 CEF 原生訊息）同時記錄到 logs/terminal_<時間>.log
 mkdir -p logs
+# 「結束考試」時學生程式碼備份至 logs/code_<時間>/
+export BYOD_LOG_DIR="$PWD/logs"
 LOG="logs/terminal_$(date +%Y-%m-%d_%H-%M-%S).log"
 echo "啟動中…（離開：Ctrl+Alt+Shift+Q 或右上「結束考試」）"
 echo "終端輸出將同時記錄到：$LOG"

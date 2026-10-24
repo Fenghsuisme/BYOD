@@ -52,6 +52,8 @@ public partial class MainWindow : Window
 
     // 本次考試工作階段資料夾（每次啟動新建）；檔案與紀錄都存在此
     private readonly string _sessionFolder;
+    // 程式碼備份：<log 資料夾>/code_<本場開始時間>/（judge 模式按「結束考試」只存檔不關閉）
+    private readonly string _logCodeFolder;
     private readonly string _liveLogPath;
     private readonly string _exportLogPath;
 
@@ -62,6 +64,10 @@ public partial class MainWindow : Window
         // 資料夾以日期時間為名（HH-mm-ss 避免同日多場衝突）
         var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
         _sessionFolder = Path.Combine(AppContext.BaseDirectory, "exams", stamp);
+        // run.sh 會以 BYOD_LOG_DIR 指向專案根目錄的 logs/（與終端紀錄同處）
+        var logDir = Environment.GetEnvironmentVariable("BYOD_LOG_DIR");
+        if (string.IsNullOrWhiteSpace(logDir)) logDir = Path.Combine(AppContext.BaseDirectory, "logs");
+        _logCodeFolder = Path.Combine(logDir, "code_" + stamp);
         Directory.CreateDirectory(_sessionFolder);
         Console.WriteLine($"[BYOD] 本場考試資料夾：{_sessionFolder}");
         _liveLogPath = Path.Combine(_sessionFolder, "events.jsonl");
@@ -89,10 +95,10 @@ public partial class MainWindow : Window
         });
         Deactivated += (_, _) => Dispatcher.UIThread.Post(OnWindowDeactivated);
 
-        // 結束考試按鈕與確認遮罩
-        EndExamButton.Click += (_, _) => ConfirmOverlay.IsVisible = true;
-        ConfirmNoButton.Click += (_, _) => ConfirmOverlay.IsVisible = false;
-        ConfirmYesButton.Click += async (_, _) => await EndExamAsync();
+        // 結束考試按鈕與確認列。確認放在頂部狀態列：置中遮罩會被 CEF 原生視窗蓋住（Linux 上看不到也點不到）
+        EndExamButton.Click += (_, _) => ShowConfirm(true);
+        ConfirmNoButton.Click += (_, _) => ShowConfirm(false);
+        ConfirmYesButton.Click += async (_, _) => await SubmitAsync(exit: _oopMode, "學生按下結束考試，開始繳交。");
 
         // 判題站導覽鍵（作用於左側瀏覽器）
         BackButton.Click += (_, _) => { if (_judgeBrowser?.CanGoBack == true) _judgeBrowser.GoBack(); };
@@ -208,6 +214,7 @@ public partial class MainWindow : Window
         {
             _oopMode = true;
             EndExamButton.Content = "結束並退出";
+            ConfirmDetailText.Text = "將存檔至桌面並關閉程式，確定？";
             HomeButton.IsVisible = false;   // OOP 模式不允許導回 judge 首頁
             Console.WriteLine("[BYOD] 步驟2：PDF 模式，載入題目檢視器…");
             _judgeBrowser.Address = LocalAssetSchemeHandlerFactory.PdfViewerUrl;
@@ -363,29 +370,27 @@ public partial class MainWindow : Window
 
     #region 監考離開與關閉
 
-    /// <summary>監考熱鍵：與「結束考試」走同一套繳交流程（存檔 + 紀錄 + 5 秒保底退出）。</summary>
+    /// <summary>監考熱鍵：存檔 + 紀錄後退出（兩種模式皆退出）。</summary>
     private void RequestProctorExit()
     {
         Dispatcher.UIThread.Post(async () =>
         {
-            if (_ending) return;
-            _detector.Record(CheatingEventType.Info, "監考人員以熱鍵結束程式。");
-            await EndExamAsync();
+            await SubmitAsync(exit: true, "監考人員以熱鍵結束程式。");
         });
     }
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
         // 一律阻擋（Alt+F4 等），維持 Kiosk 封閉；
-        // 結束考試走 lifetime.Shutdown()，其為強制關閉，不受此 Cancel 影響
+        // 需要退出時一律走 Program.HardExit()，不經過視窗關閉
         e.Cancel = true;
     }
 
-    private async Task ExportLogsAsync()
+    private async Task ExportLogsAsync(string message = "防弊瀏覽器正常關閉。")
     {
         try
         {
-            _detector.Record(CheatingEventType.Info, "防弊瀏覽器正常關閉。");
+            _detector.Record(CheatingEventType.Info, message);
             await _detector.ExportJsonAsync(_exportLogPath);
         }
         catch
@@ -398,39 +403,50 @@ public partial class MainWindow : Window
 
     #region 結束考試（繳交）
 
-    /// <summary>學生按下「結束考試」：儲存所有分頁檔案與紀錄至本次資料夾，然後退出。</summary>
-    private async Task EndExamAsync()
+    private void ShowConfirm(bool show)
     {
-        if (_ending) return;   // 防止連點「確定繳交」或與監考熱鍵同時觸發
+        ConfirmPanel.IsVisible = show;
+        EndExamButton.IsVisible = !show;
+    }
+
+    /// <summary>
+    /// 繳交：儲存所有分頁至本場資料夾與 log 資料夾（OOP 另存桌面）並導出紀錄。
+    /// exit = false（judge 模式）：存完維持畫面，學生直接關機；可再按一次覆蓋為最新版本。
+    /// exit = true（OOP 模式 / 監考熱鍵）：存完立即結束程式。
+    /// </summary>
+    private async Task SubmitAsync(bool exit, string reason)
+    {
+        if (_ending) return;   // 防止連點「確定」或與監考熱鍵同時觸發
         _ending = true;
-        ConfirmOverlay.IsVisible = false;
-        StatusText.Text = "正在儲存與繳交…";
-        _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
+        ShowConfirm(false);
+        StatusText.Text = "正在儲存…";
+        _detector.Record(CheatingEventType.Info, reason);
 
-        // 保底：5 秒後無論如何強制結束（含 CEF 子行程），避免 CEF 關閉流程卡住
-        _ = Task.Delay(5000).ContinueWith(_ => Program.HardExit());
+        // 保底：5 秒後無論如何強制結束（含 CEF 子行程），避免存檔卡住而無法退出
+        if (exit)
+            _ = Task.Delay(5000).ContinueWith(_ => Program.HardExit());
 
+        var saved = false;
         try
         {
             var filesJson = await CollectFilesJsonAsync();
-            try { await SaveAllFilesAsync(filesJson); } catch { }
+            try { saved = await SaveAllFilesAsync(filesJson, Path.Combine(_sessionFolder, "files")); } catch { }
+            try { await SaveAllFilesAsync(filesJson, _logCodeFolder); } catch { }
             if (_oopMode)
                 try { await EditorBridge.DoSaveToDesktop(filesJson); } catch { }
-            try { await ExportLogsAsync(); } catch { }
-            Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}");
+            try { await ExportLogsAsync(exit ? "防弊瀏覽器正常關閉。" : "已儲存作答（未關閉程式）。"); } catch { }
+            Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}，程式碼備份：{_logCodeFolder}");
         }
         catch { }
 
-        // OOP（PDF）模式：存檔完成即直接結束，不走 CEF 關閉流程（實測會卡住）
-        if (_oopMode)
+        // 不走 CEF 關閉流程（在 Linux 上會卡住），存檔完成即直接結束
+        if (exit)
             Program.HardExit();
 
-        // 優先走 Avalonia 正式關閉序列；若不支援則直接殺行程
-        if (Application.Current?.ApplicationLifetime
-            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime lt)
-            lt.Shutdown(0);
-        else
-            Program.HardExit();
+        StatusText.Text = saved
+            ? $"作答已儲存（{DateTime.Now:HH:mm:ss}），請直接關機。"
+            : "儲存失敗，請通知監考人員。";
+        _ending = false;
     }
 
     /// <summary>向編輯器請求所有分頁 JSON，最多等 2.5 秒，超時回傳空陣列。</summary>
@@ -452,15 +468,20 @@ public partial class MainWindow : Window
         return "[]";
     }
 
-    /// <summary>將已收集的 filesJson 寫入本次資料夾的 files 子目錄。</summary>
-    private async Task SaveAllFilesAsync(string json)
+    /// <summary>
+    /// 將已收集的 filesJson 寫入 filesDir（先清空，使內容與目前分頁一致）。
+    /// 收集失敗（空陣列）時不動既有檔案，回傳 false。
+    /// </summary>
+    private static async Task<bool> SaveAllFilesAsync(string json, string filesDir)
     {
-        if (string.IsNullOrWhiteSpace(json)) return;
-
-        var filesDir = Path.Combine(_sessionFolder, "files");
-        Directory.CreateDirectory(filesDir);
+        if (string.IsNullOrWhiteSpace(json)) return false;
 
         using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.GetArrayLength() == 0) return false;
+
+        if (Directory.Exists(filesDir)) Directory.Delete(filesDir, recursive: true);
+        Directory.CreateDirectory(filesDir);
+
         var index = 0;
         foreach (var el in doc.RootElement.EnumerateArray())
         {
@@ -473,6 +494,7 @@ public partial class MainWindow : Window
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             await File.WriteAllTextAsync(fullPath, content ?? string.Empty);
         }
+        return true;
     }
 
     #endregion
