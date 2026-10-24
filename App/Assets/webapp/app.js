@@ -727,7 +727,8 @@
         var members = ["push_back", "size", "pop_back", "empty", "begin", "end", "first", "second",
             "push", "pop", "top", "front", "back", "clear", "insert", "erase", "find", "count",
             "length", "substr", "push_front", "pop_front", "at", "resize", "c_str"];
-        var directives = ["#include <iostream>", "#include <bits/stdc++.h>", "#include <vector>",
+        // 不提供 <bits/stdc++.h>：考試禁用（執行時也會擋）
+        var directives = ["#include <iostream>", "#include <vector>",
             "#include <string>", "#include <algorithm>", "#include <map>", "#include <set>",
             "#include <queue>", "#include <stack>", "#include <cmath>", "#include <cstdio>",
             "#include <cstring>", "#include <cstdlib>", "#include <iomanip>",
@@ -803,7 +804,7 @@
                         };
                         // C 只列 .h 標頭（排除 <iostream>、<bits/stdc++.h> 等 C++ 標頭）
                         var list = isCpp ? directives : directives.filter(function (d) {
-                            return !/^#include <[^.]*>$/.test(d) && d.indexOf("bits/") < 0;
+                            return !/^#include <[^.]*>$/.test(d);
                         });
                         return { suggestions: items(list, K.Module, hashRange, "0") };
                     }

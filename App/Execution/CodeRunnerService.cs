@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -156,11 +157,21 @@ public sealed class CodeRunnerService
                 }
             }
 
+            // ---- 禁用標頭檢查（<bits/stdc++.h> 等 <bits/…> 內部標頭）----
+            var banned = FindBannedInclude(srcName, code)
+                ?? extraFiles?.Select(f => FindBannedInclude(Path.GetFileName(f.name), f.content))
+                    .FirstOrDefault(m => m != null);
+            if (banned != null)
+            {
+                return new RunResult { Ok = false, Phase = "compile", Stderr = banned, Message = "使用了禁用的標頭。" };
+            }
+
             // ---- 編譯 ----
             // 收集 workDir 中所有輔助 .c/.cpp 來源檔（.h 不列入，由 #include 引入）
             // -lm：確保 C 的 sqrt/pow/sin 等數學函式正確連結（Linux 需明確指定）
             // 以 ArgumentList 逐一傳參（不經字串拼接），檔名含引號或空白也不會被拆成額外參數
-            var compileArgs = new List<string> { "-O2", std, "-o", exePath, srcPath };
+            // -MD：順便輸出相依標頭清單（*.d），用來抓以巨集間接引入的禁用標頭
+            var compileArgs = new List<string> { "-O2", std, "-MD", "-o", exePath, srcPath };
             if (extraFiles != null)
             {
                 // 同大題其他定義了 main() 的來源檔（另一份解答 / 草稿）不連結，避免 multiple definition of main
@@ -206,6 +217,17 @@ public sealed class CodeRunnerService
             // 以「執行檔是否產生」判定編譯成功，不依賴 exit code（CEF 併存時 exit 偵測不可靠）
             var compiled = File.Exists(exePath);
             Console.WriteLine($"[BYOD-run] 編譯結束 killed={compile.Killed} 產生執行檔={compiled}");
+
+            if (compiled && UsesBannedHeaderViaDeps(workDir))
+            {
+                return new RunResult
+                {
+                    Ok = false,
+                    Phase = "compile",
+                    Stderr = BannedHeaderMessage + "（偵測到以巨集等方式間接引入）",
+                    Message = "使用了禁用的標頭。"
+                };
+            }
 
             if (control.StopRequested)
             {
@@ -362,6 +384,46 @@ public sealed class CodeRunnerService
                 ElapsedMs = sw.ElapsedMilliseconds
             };
         });
+    }
+
+    private const string BannedHeaderMessage =
+        "禁止使用 <bits/stdc++.h>（及其他 <bits/…> 標頭），請改用個別標頭，例如 <iostream>、<vector>、<algorithm>、<string>。";
+
+    // 直接引入 <bits/…> 或 "bits/…"（允許 # 與 include 之間有空白）
+    private static readonly System.Text.RegularExpressions.Regex BannedInclude = new(
+        @"^\s*#\s*include\s*[<""]\s*bits/", System.Text.RegularExpressions.RegexOptions.Multiline);
+
+    private static readonly System.Text.RegularExpressions.Regex Comments = new(
+        @"//[^\n]*|/\*.*?\*/", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+    /// <summary>找出原始碼中直接引入的禁用標頭，回傳「檔名:行號: 訊息」；沒有則回傳 null。註解中的不算。</summary>
+    internal static string? FindBannedInclude(string fileName, string? source)
+    {
+        if (string.IsNullOrEmpty(source)) return null;
+        // 註解換成等量換行，保留行號
+        var stripped = Comments.Replace(source, m => new string('\n', m.Value.Count(ch => ch == '\n')));
+        var match = BannedInclude.Match(stripped);
+        if (!match.Success) return null;
+        var line = stripped.Take(match.Index).Count(ch => ch == '\n') + 1;
+        return $"{fileName}:{line}: {BannedHeaderMessage}";
+    }
+
+    // 聚合標頭：真正引入「整包」標準庫的那幾個（一般標頭內部也會引用其他 bits/*.h，不能全擋）
+    private static readonly string[] BannedAggregateHeaders = { "bits/stdc++.h", "bits/extc++.h", "bits/stdtr1c++.h" };
+
+    /// <summary>讀取編譯器 -MD 產生的 *.d 相依清單，檢查是否實際引入了聚合標頭。</summary>
+    private static bool UsesBannedHeaderViaDeps(string workDir)
+    {
+        try
+        {
+            foreach (var dep in Directory.EnumerateFiles(workDir, "*.d"))
+            {
+                var text = File.ReadAllText(dep);
+                if (BannedAggregateHeaders.Any(h => text.Contains(h, StringComparison.Ordinal))) return true;
+            }
+        }
+        catch { /* 讀不到相依檔不影響執行 */ }
+        return false;
     }
 
     // 去除註解與字串 / 字元常值後，判斷是否出現 main(
