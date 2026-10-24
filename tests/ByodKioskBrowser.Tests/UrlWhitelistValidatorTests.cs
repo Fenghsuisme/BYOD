@@ -73,4 +73,16 @@ public class UrlWhitelistValidatorTests
         Assert.True(validator.IsAllowed("https://api.example.org/"));
         Assert.False(validator.IsAllowed("https://judge.gai.tw/"));
     }
+
+    [Theory]
+    [InlineData("https://judge.gai.tw/problem/123", true)]
+    [InlineData("https://cdn.jsdelivr.net/gh/user/repo/answer.cpp", false)] // CDN 不得整頁導航
+    [InlineData("https://cdnjs.cloudflare.com/ajax/libs/x", false)]
+    [InlineData("https://fonts.googleapis.com/css2", false)]
+    public void NavigationHosts_OnlyAllowJudge(string uri, bool expected)
+    {
+        var validator = new UrlWhitelistValidator(UrlWhitelistValidator.NavigationHosts());
+
+        Assert.Equal(expected, validator.IsAllowed(uri));
+    }
 }

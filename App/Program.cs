@@ -115,6 +115,20 @@ internal static class Program
         }
         _cleaned = true;
 
+        // 題目 PDF 暫存檔（放在 CEF 關閉前：CEF 關閉可能卡住而被保底 Kill）
+        try
+        {
+            var pdf = LocalAssetSchemeHandlerFactory.PdfCachePath;
+            if (!string.IsNullOrEmpty(pdf) && File.Exists(pdf))
+            {
+                File.Delete(pdf);
+            }
+        }
+        catch
+        {
+            // 忽略
+        }
+
         try
         {
             CefRuntime.Shutdown(); // 先關閉 CEF 才能釋放快取檔案鎖

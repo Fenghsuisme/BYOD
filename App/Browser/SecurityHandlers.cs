@@ -7,14 +7,18 @@ namespace ByodKioskBrowser.Browser;
 
 /// <summary>
 /// 導航白名單攔截。比對 URL；本地 app:// scheme 一律放行，其餘不在白名單即取消並記錄。
+/// 主框架（整頁）只比對導航白名單（評測網域）；子框架（iframe）才使用含 CDN 的資源白名單。
 /// </summary>
 public sealed class WhitelistRequestHandler : RequestHandler
 {
+    private readonly IUrlWhitelistValidator _navigationWhitelist;
     private readonly IUrlWhitelistValidator _whitelist;
     private readonly ICheatingDetector _detector;
 
-    public WhitelistRequestHandler(IUrlWhitelistValidator whitelist, ICheatingDetector detector)
+    public WhitelistRequestHandler(
+        IUrlWhitelistValidator navigationWhitelist, IUrlWhitelistValidator whitelist, ICheatingDetector detector)
     {
+        _navigationWhitelist = navigationWhitelist;
         _whitelist = whitelist;
         _detector = detector;
     }
@@ -30,7 +34,8 @@ public sealed class WhitelistRequestHandler : RequestHandler
             return false;
         }
 
-        if (_whitelist.IsAllowed(url))
+        var allowed = frame.IsMain ? _navigationWhitelist.IsAllowed(url) : _whitelist.IsAllowed(url);
+        if (allowed)
         {
             return false; // 允許導航
         }
@@ -41,7 +46,7 @@ public sealed class WhitelistRequestHandler : RequestHandler
 }
 
 /// <summary>
-/// 彈窗 / 新視窗攔截。一律不開新視窗；白名單目標改由原 browser 導航，否則丟棄並記錄。
+/// 彈窗 / 新視窗攔截。一律不開新視窗；導航白名單目標改由原 browser 導航，否則丟棄並記錄。
 /// </summary>
 public sealed class BlockPopupLifeSpanHandler : LifeSpanHandler
 {
@@ -71,6 +76,29 @@ public sealed class BlockPopupLifeSpanHandler : LifeSpanHandler
         }
 
         return true; // 阻止建立彈窗視窗
+    }
+}
+
+/// <summary>
+/// 檔案選擇對話框一律取消（&lt;input type="file"&gt; 等）。
+/// 原生檔案對話框可瀏覽整個檔案系統（含外接 USB），並會讓主視窗失焦。
+/// </summary>
+public sealed class BlockFileDialogHandler : DialogHandler
+{
+    private readonly ICheatingDetector _detector;
+
+    public BlockFileDialogHandler(ICheatingDetector detector)
+    {
+        _detector = detector;
+    }
+
+    protected override bool OnFileDialog(
+        CefBrowser browser, CefFileDialogMode mode, string title, string defaultFilePath,
+        string[] acceptFilters, CefFileDialogCallback callback)
+    {
+        _detector.Record(CheatingEventType.BlockedNewWindow, "已攔截開啟檔案選擇對話框的嘗試。", browser.GetMainFrame()?.Url);
+        callback.Cancel();
+        return true;
     }
 }
 

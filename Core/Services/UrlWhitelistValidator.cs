@@ -40,6 +40,15 @@ public sealed class UrlWhitelistValidator : IUrlWhitelistValidator
         "fonts.gstatic.com"
     };
 
+    /// <summary>
+    /// 主框架（整頁）導航白名單：僅評測網域。
+    /// CDN 只供頁面載入子資源；若允許整頁導航，cdn.jsdelivr.net/gh/… 可直接顯示任意 GitHub 內容。
+    /// </summary>
+    public static IReadOnlyList<string> NavigationHosts() => new[]
+    {
+        "judge.gai.tw"
+    };
+
     public bool IsAllowed(string uri)
     {
         if (string.IsNullOrWhiteSpace(uri))

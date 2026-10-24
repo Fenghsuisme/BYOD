@@ -53,7 +53,13 @@ fi
 
 # 鎖定 GNOME 逃脫快速鍵（Alt+F4 / Alt+Tab / Super）；結束（含當機/Ctrl+C）時還原
 ./Scripts/desktop-lock.sh lock || true
-trap './Scripts/desktop-lock.sh unlock || true' EXIT
+# 同時清掉 App 被保底 Kill 時來不及刪除的暫存（CEF 快取 / 題目 PDF / 編譯暫存）
+cleanup() {
+    ./Scripts/desktop-lock.sh unlock || true
+    local tmp="${TMPDIR:-/tmp}"
+    rm -rf "$tmp"/ByodKiosk_* "$tmp"/byod_exam_*.pdf "$tmp"/byod_run_* 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # 終端輸出（含 CEF 原生訊息）同時記錄到 logs/terminal_<時間>.log
 mkdir -p logs

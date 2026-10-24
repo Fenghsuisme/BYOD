@@ -21,6 +21,8 @@ public partial class MainWindow : Window
     private const string JudgeStartUrl = "https://judge.gai.tw/";
 
     private readonly IUrlWhitelistValidator _whitelist = new UrlWhitelistValidator();
+    private readonly IUrlWhitelistValidator _navigationWhitelist =
+        new UrlWhitelistValidator(UrlWhitelistValidator.NavigationHosts());
     private readonly ICheatingDetector _detector;
     private readonly CodeRunnerService _runner = new();
     private readonly EditorBridge _bridge;
@@ -37,8 +39,7 @@ public partial class MainWindow : Window
     private AvaloniaCefBrowser? _editorBrowser;
 
     private string _currentCode = string.Empty;
-    private bool _proctorExit;
-    private bool _logExported;
+    private bool _ending;
     // WarningOverlay 防抖：Deactivated 觸發後等 200ms，
     // 若 Activated 在此期間到達（CEF 內部焦點轉移）則取消，不顯示警示
     private bool _deactivatePending;
@@ -71,6 +72,8 @@ public partial class MainWindow : Window
         _bridge.Ready += OnEditorReady;
         _bridge.CodeChanged += code => _currentCode = code;
         _bridge.CheatReported += OnCheatReported;
+        _bridge.RunOutput += (stream, text) => Dispatcher.UIThread.Post(() =>
+            RunInEditor($"window.__runOutput && window.__runOutput({JsString(stream)}, {JsString(text)})"));
         _bridge.RunCompleted += OnRunCompleted;
         _bridge.SaveCompleted += msg => Dispatcher.UIThread.Post(() =>
             RunInEditor($"window.__saveResult && window.__saveResult({JsString(msg)})"));
@@ -246,9 +249,10 @@ public partial class MainWindow : Window
     {
         var browser = new AvaloniaCefBrowser
         {
-            RequestHandler = new WhitelistRequestHandler(_whitelist, _detector),
-            LifeSpanHandler = new BlockPopupLifeSpanHandler(_whitelist, _detector),
+            RequestHandler = new WhitelistRequestHandler(_navigationWhitelist, _whitelist, _detector),
+            LifeSpanHandler = new BlockPopupLifeSpanHandler(_navigationWhitelist, _detector),
             ContextMenuHandler = new NoContextMenuHandler(),
+            DialogHandler = new BlockFileDialogHandler(_detector),
             KeyboardHandler = new LockdownKeyboardHandler(_detector)
             // DownloadHandler 保持 null → 一律不允許下載
         };
@@ -359,32 +363,22 @@ public partial class MainWindow : Window
 
     #region 監考離開與關閉
 
+    /// <summary>監考熱鍵：與「結束考試」走同一套繳交流程（存檔 + 紀錄 + 5 秒保底退出）。</summary>
     private void RequestProctorExit()
     {
-        Dispatcher.UIThread.Post(() =>
+        Dispatcher.UIThread.Post(async () =>
         {
-            _proctorExit = true;
+            if (_ending) return;
             _detector.Record(CheatingEventType.Info, "監考人員以熱鍵結束程式。");
-            Close();
+            await EndExamAsync();
         });
     }
 
-    private async void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
     {
-        // 非監考熱鍵觸發的關閉一律阻擋，維持 Kiosk 封閉
-        if (!_proctorExit)
-        {
-            e.Cancel = true;
-            return;
-        }
-
-        if (!_logExported)
-        {
-            e.Cancel = true;
-            await ExportLogsAsync();
-            _logExported = true;
-            Close();
-        }
+        // 一律阻擋（Alt+F4 等），維持 Kiosk 封閉；
+        // 結束考試走 lifetime.Shutdown()，其為強制關閉，不受此 Cancel 影響
+        e.Cancel = true;
     }
 
     private async Task ExportLogsAsync()
@@ -407,6 +401,8 @@ public partial class MainWindow : Window
     /// <summary>學生按下「結束考試」：儲存所有分頁檔案與紀錄至本次資料夾，然後退出。</summary>
     private async Task EndExamAsync()
     {
+        if (_ending) return;   // 防止連點「確定繳交」或與監考熱鍵同時觸發
+        _ending = true;
         ConfirmOverlay.IsVisible = false;
         StatusText.Text = "正在儲存與繳交…";
         _detector.Record(CheatingEventType.Info, "學生按下結束考試，開始繳交。");
@@ -470,39 +466,11 @@ public partial class MainWindow : Window
             var name    = el.TryGetProperty("name",    out var n) ? n.GetString() : null;
             var content = el.TryGetProperty("content", out var c) ? c.GetString() : string.Empty;
 
-            var relPath = SanitizeRelativePath(name, index);
+            var relPath = EditorBridge.SanitizeRelativePath(name, index);
             var fullPath = Path.Combine(filesDir, relPath);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
             await File.WriteAllTextAsync(fullPath, content ?? string.Empty);
         }
-    }
-
-    /// <summary>
-    /// 處理 "Q1/main.cpp" 格式的相對路徑：只允許一層子目錄（大題名稱），防止路徑穿越。
-    /// 無斜線時退化為純檔名處理。
-    /// </summary>
-    private static string SanitizeRelativePath(string? name, int index)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
-        name = name.Replace('\\', '/').Trim('/');
-        var slash = name.IndexOf('/');
-        if (slash > 0 && slash < name.Length - 1)
-        {
-            var dir  = SanitizeFileName(name[..slash],      0);
-            var file = SanitizeFileName(name[(slash + 1)..], index);
-            if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(file))
-                return Path.Combine(dir, file);
-        }
-        return SanitizeFileName(name, index);
-    }
-
-    private static string SanitizeFileName(string? name, int index)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return $"file{index}.txt";
-        name = Path.GetFileName(name);
-        foreach (var ch in Path.GetInvalidFileNameChars())
-            name = name.Replace(ch, '_');
-        return string.IsNullOrWhiteSpace(name) ? $"file{index}.txt" : name;
     }
 
     #endregion
