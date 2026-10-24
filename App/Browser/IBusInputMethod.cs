@@ -8,8 +8,7 @@ namespace ByodKioskBrowser.Browser;
 /// <summary>
 /// 直接以 DBus 連 ibus 的輸入法用戶端。
 /// CEF 在 Linux 視窗模式沒有接輸入法（Chromium 只放測試用的空殼），所以由我們把按鍵送給 ibus，
-/// 再把 ibus 回傳的文字（CommitText）寫入網頁。選字窗與注音組字由 GNOME Shell 的 ibus 面板顯示
-/// （不宣告 PREEDIT 能力，ibus 會把組字中的字顯示在面板上）。
+/// 再把 ibus 回傳的文字（CommitText）寫入網頁。注音組字與選字窗都由 GNOME Shell 的 ibus 面板顯示。
 /// 任何一步失敗都退回「不處理」，按鍵照常交給 CEF，不影響英文輸入。
 /// </summary>
 public sealed class IBusInputMethod : IDisposable
@@ -17,8 +16,9 @@ public sealed class IBusInputMethod : IDisposable
     private const string Service = "org.freedesktop.IBus";
     private const string ContextInterface = "org.freedesktop.IBus.InputContext";
 
-    // IBusCapabilite：FOCUS | LOOKUP_TABLE | AUXILIARY_TEXT（不含 PREEDIT_TEXT，組字顯示在面板上）
-    private const uint Capabilities = 8 | 4 | 2;
+    // IBusCapabilite：只宣告 FOCUS。宣告 PREEDIT_TEXT / LOOKUP_TABLE / AUXILIARY_TEXT 代表「由 App 自己畫」，
+    // ibus 就不會交給系統面板（GNOME Shell）顯示，選字窗會消失
+    private const uint Capabilities = 8;
 
     /// <summary>ProcessKeyEvent 的 state：放開按鍵時加上 IBUS_RELEASE_MASK。</summary>
     public const uint ReleaseMask = 1u << 30;
