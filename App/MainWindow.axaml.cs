@@ -142,15 +142,14 @@ public partial class MainWindow : Window
                 "judge-paste-blocked");
         };
 
-        // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
         // 選字窗跟著游標：頁面回報焦點欄位位置（CSS 像素）→ 換算成螢幕座標
         _bridge.CaretMoved += (x, y, h, dpr) => Dispatcher.UIThread.Post(() => UpdateImeCaret(_editorBrowser, x, y, h, dpr));
         _hostBridge.CaretMoved += (x, y, h, dpr) => Dispatcher.UIThread.Post(() => UpdateImeCaret(_judgeBrowser, x, y, h, dpr));
         _bridge.Clicked += () => Dispatcher.UIThread.Post(() => GiveKeyboardFocus(_editorBrowser));
         _hostBridge.Clicked += () => Dispatcher.UIThread.Post(() => GiveKeyboardFocus(_judgeBrowser));
         Activated += (_, _) => _ime.FocusIn();
-        Deactivated += (_, _) => _ime.FocusOut();
 
+        // Activated：取消 pending 防抖計時（代表是 CEF 內部焦點轉移，非真正離開應用程式）
         Activated += (_, _) => Dispatcher.UIThread.Post(() =>
         {
             _deactivatePending = false;
@@ -365,6 +364,9 @@ public partial class MainWindow : Window
         {
             if (!_deactivatePending) return;   // Activated 已取消
             _deactivatePending = false;
+            // 鍵盤焦點仍在本視窗的子視窗（點擊後交給某個 CEF 瀏覽器）→ 不是離開 App
+            if (X11Focus.IsInside(TryGetPlatformHandle()?.Handle ?? IntPtr.Zero) == true) return;
+            _ime.FocusOut();
             _detector.RecordDeactivation();
             WarningOverlay.IsVisible = true;
         }));
