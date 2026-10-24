@@ -43,8 +43,10 @@
             contextmenu: false,
             scrollBeyondLastLine: false,
             renderWhitespace: "selection",
-            // 補全：Tab 接受、輸入即建議、把文件內出現過的字（含自訂命名）納入建議
-            tabCompletion: "on",
+            // 補全：只有 Tab 接受建議，Enter 一律換行（否則打完變數名按 Enter 會被換成 namespace 之類的字）
+            // 把文件內出現過的字（含自訂命名）納入建議
+            acceptSuggestionOnEnter: "off",
+            tabCompletion: "off",
             suggestOnTriggerCharacters: true,
             quickSuggestions: { other: true, comments: false, strings: false },
             wordBasedSuggestions: "currentDocument",
@@ -695,6 +697,10 @@
     });
 
     // ================= C / C++ 輕量語法補全 =================
+    // 三種情境分開提供，避免一堆不相干的字擠在一起：
+    //   行首 #        → #include <…> 等前置指令（取代範圍含 #）
+    //   . 或 -> 之後  → 只給成員函式（push_back、size…）
+    //   其他          → 關鍵字 / 函式庫名稱 / 程式碼片段（同名時只留片段，不重複）
     function registerCppCompletions() {
         if (typeof monaco === "undefined" || registerCppCompletions._done) { return; }
         registerCppCompletions._done = true;
@@ -704,9 +710,8 @@
 
         var cKeywords = ["int", "char", "short", "long", "float", "double", "void", "unsigned",
             "signed", "const", "static", "extern", "struct", "union", "enum", "typedef", "sizeof",
-            "if", "else", "for", "while", "do", "switch", "case", "default", "break", "continue",
-            "return", "goto", "NULL"];
-        var cppKeywords = ["bool", "true", "false", "class", "struct", "public", "private", "protected",
+            "else", "do", "switch", "case", "default", "break", "continue", "return", "goto", "NULL"];
+        var cppKeywords = ["bool", "true", "false", "public", "private", "protected",
             "namespace", "using", "template", "typename", "this", "new", "delete", "virtual", "override",
             "nullptr", "auto", "try", "catch", "throw", "operator", "friend", "inline", "explicit",
             "constexpr", "static_cast", "dynamic_cast", "const_cast", "reinterpret_cast"];
@@ -715,65 +720,116 @@
             "strncpy", "strcat", "strstr", "atoi", "atof", "abs", "labs", "pow", "sqrt", "ceil",
             "floor", "fabs", "rand", "srand", "qsort", "fopen", "fclose", "fscanf", "fprintf", "EOF"];
         var cppLib = ["std", "cout", "cin", "cerr", "endl", "string", "vector", "map", "unordered_map",
-            "set", "unordered_set", "pair", "queue", "stack", "priority_queue", "sort", "reverse",
-            "max", "min", "swap", "make_pair", "to_string", "stoi", "stod", "push_back", "pop_back",
-            "size", "empty", "begin", "end", "front", "back", "find", "insert", "erase", "count",
-            "substr", "length", "first", "second"];
-        var headers = ["#include <iostream>", "#include <vector>", "#include <string>",
-            "#include <algorithm>", "#include <map>", "#include <set>", "#include <queue>",
-            "#include <cmath>", "#include <cstdio>", "#include <cstring>", "#include <cstdlib>",
-            "#include <stdio.h>", "#include <stdlib.h>", "#include <string.h>", "#include <math.h>"];
+            "set", "unordered_set", "pair", "queue", "stack", "priority_queue", "deque", "list",
+            "sort", "reverse", "max", "min", "swap", "make_pair", "to_string", "stoi", "stod",
+            "getline", "lower_bound", "upper_bound", "accumulate", "fill"];
+        // 成員與前置指令依「常用程度」排序（清單順序即建議順序）
+        var members = ["push_back", "size", "pop_back", "empty", "begin", "end", "first", "second",
+            "push", "pop", "top", "front", "back", "clear", "insert", "erase", "find", "count",
+            "length", "substr", "push_front", "pop_front", "at", "resize", "c_str"];
+        var directives = ["#include <iostream>", "#include <bits/stdc++.h>", "#include <vector>",
+            "#include <string>", "#include <algorithm>", "#include <map>", "#include <set>",
+            "#include <queue>", "#include <stack>", "#include <cmath>", "#include <cstdio>",
+            "#include <cstring>", "#include <cstdlib>", "#include <iomanip>",
+            "#include <stdio.h>", "#include <stdlib.h>", "#include <string.h>", "#include <math.h>",
+            "#include \"\"", "#define ", "#ifndef ", "#endif"];
 
-        function items(list, kind, range) {
-            return list.map(function (w) {
-                return { label: w, kind: kind, insertText: w, range: range };
+        // sortText = 群組前綴 + 清單內順序，讓建議依清單順序而非字母排列
+        function items(list, kind, range, sortPrefix) {
+            return list.map(function (w, i) {
+                return { label: w, kind: kind, insertText: w, range: range, sortText: sortPrefix + ("000" + i).slice(-4) };
             });
+        }
+
+        // 文件中出現過的識別字（自訂變數 / 函式名）。Monaco 內建的文字建議只在沒有其他來源時才出現，
+        // 所以自己掃描加入；排除游標所在、正在打的那個字
+        function documentWords(model, position, exclude) {
+            var seen = {};
+            exclude.forEach(function (w) { seen[w] = true; });
+            var current = model.getWordAtPosition(position);
+            var text = model.getValue();
+            var re = /[A-Za-z_][A-Za-z0-9_]*/g;
+            var out = [];
+            var m;
+            while ((m = re.exec(text)) && out.length < 1000) {
+                var w = m[0];
+                if (w.length < 2 || seen[w]) { continue; }
+                seen[w] = true;
+                if (current && w === current.word) {
+                    // 正在打的字若在文件其他地方也出現過，才算已存在的識別字
+                    var occurrences = text.split(new RegExp("\\b" + w + "\\b")).length - 1;
+                    if (occurrences < 2) { continue; }
+                }
+                out.push(w);
+            }
+            return out;
         }
 
         function snippets(range, isCpp) {
             var s = [
-                { label: "for", detail: "for 迴圈", insertText: "for (int ${1:i} = 0; ${1:i} < ${2:n}; ++${1:i}) {\n\t$0\n}" },
+                { label: "for", detail: "for 迴圈", insertText: "for (int ${1:i} = 0; ${1:i} < ${2:n}; ${1:i}++) {\n\t$0\n}" },
                 { label: "while", detail: "while 迴圈", insertText: "while (${1:cond}) {\n\t$0\n}" },
-                { label: "if", detail: "if", insertText: "if (${1:cond}) {\n\t$0\n}" }
+                { label: "if", detail: "if", insertText: "if (${1:cond}) {\n\t$0\n}" },
+                { label: "main", detail: "main 函式", insertText: "int main() {\n\t$0\n\treturn 0;\n}" }
             ];
             if (isCpp) {
-                s.push({ label: "main", detail: "C++ main", insertText: "int main() {\n\t$0\n\treturn 0;\n}" });
-                s.push({ label: "cout", detail: "輸出", insertText: "std::cout << ${1:x} << std::endl;$0" });
-                s.push({ label: "cin", detail: "輸入", insertText: "std::cin >> ${1:x};$0" });
                 s.push({ label: "class", detail: "類別", insertText: "class ${1:Name} {\npublic:\n\t$0\n};" });
-            } else {
-                s.push({ label: "main", detail: "C main", insertText: "int main() {\n\t$0\n\treturn 0;\n}" });
-                s.push({ label: "printf", detail: "輸出", insertText: "printf(\"${1:%d}\\n\", ${2:x});$0" });
-                s.push({ label: "scanf", detail: "輸入", insertText: "scanf(\"${1:%d}\", &${2:x});$0" });
             }
             return s.map(function (x) {
                 return {
-                    label: x.label, kind: monaco.languages.CompletionItemKind.Snippet,
-                    detail: x.detail, insertText: x.insertText,
-                    insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-                    range: range
+                    label: x.label, kind: K.Snippet, detail: x.detail, insertText: x.insertText,
+                    insertTextRules: SNIPPET, range: range, sortText: "0" + x.label
                 };
             });
         }
 
         function provider(isCpp) {
             return {
+                triggerCharacters: ["#", ".", ">"],
                 provideCompletionItems: function (model, position) {
+                    var before = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
                     var word = model.getWordUntilPosition(position);
                     var range = {
                         startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
                         startColumn: word.startColumn, endColumn: word.endColumn
                     };
-                    var sug = []
-                        .concat(items(cKeywords, K.Keyword, range))
-                        .concat(items(cLib, K.Function, range))
-                        .concat(items(headers, K.Module, range))
-                        .concat(snippets(range, isCpp));
-                    if (isCpp) {
-                        sug = sug
-                            .concat(items(cppKeywords, K.Keyword, range))
-                            .concat(items(cppLib, K.Function, range));
+
+                    // 行首 #：取代範圍從 # 開始，選了才不會變成 ##include
+                    var hash = /^(\s*)#\w*$/.exec(before);
+                    if (hash) {
+                        var hashRange = {
+                            startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+                            startColumn: hash[1].length + 1, endColumn: position.column
+                        };
+                        // C 只列 .h 標頭（排除 <iostream>、<bits/stdc++.h> 等 C++ 標頭）
+                        var list = isCpp ? directives : directives.filter(function (d) {
+                            return !/^#include <[^.]*>$/.test(d) && d.indexOf("bits/") < 0;
+                        });
+                        return { suggestions: items(list, K.Module, hashRange, "0") };
                     }
+
+                    // . 或 -> 之後：只給成員
+                    var prefix = before.slice(0, word.startColumn - 1);
+                    if (/(\.|->)$/.test(prefix)) {
+                        return { suggestions: isCpp ? items(members, K.Method, range, "0") : [] };
+                    }
+                    if (word.word === "" && /[.>]$/.test(prefix)) {
+                        return { suggestions: [] };   // 觸發字元是 >（如 cin >>）或數字小數點時不跳清單
+                    }
+
+                    var known = cKeywords.concat(cLib, ["for", "while", "if", "main", "class"]);
+                    var sug = snippets(range, isCpp)
+                        .concat(items(cKeywords, K.Keyword, range, "2"))
+                        .concat(items(cLib, K.Function, range, "3"));
+                    if (isCpp) {
+                        known = known.concat(cppKeywords, cppLib);
+                        sug = sug
+                            .concat(items(cppKeywords, K.Keyword, range, "2"))
+                            .concat(items(cppLib, K.Function, range, "3"))
+                            .concat(items(["using namespace std;"], K.Snippet, range, "4"));
+                    }
+                    // 自訂識別字排在關鍵字前面（同樣吻合時優先）
+                    sug = sug.concat(items(documentWords(model, position, known), K.Variable, range, "1"));
                     return { suggestions: sug };
                 }
             };
@@ -781,7 +837,5 @@
 
         monaco.languages.registerCompletionItemProvider("c", provider(false));
         monaco.languages.registerCompletionItemProvider("cpp", provider(true));
-        // .h 檔用 "c" language ID，但以防萬一也掛一個
-        try { monaco.languages.registerCompletionItemProvider("h", provider(false)); } catch(e) {}
     }
 })();
