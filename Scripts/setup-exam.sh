@@ -58,7 +58,25 @@ if ! command -v dotnet >/dev/null 2>&1; then
     else
         echo "    安裝 .NET 8 SDK 到 ~/.dotnet …"
         download https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh
-        bash /tmp/dotnet-install.sh --channel 8.0
+        # 先查好確切版本再安裝：只給 --channel 時腳本會走 aka.ms 轉址，
+        # 而它目前轉到已停用的 dotnetorigin.blob.core.windows.net（HTTP 409），且不會改試其他來源
+        DOTNET_VERSION=""
+        if download https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0/latest.version /tmp/dotnet-latest.version; then
+            DOTNET_VERSION="$(tail -n1 /tmp/dotnet-latest.version | tr -d '[:space:]')"
+        fi
+        if [[ -n "$DOTNET_VERSION" ]] && bash /tmp/dotnet-install.sh --version "$DOTNET_VERSION"; then
+            :
+        elif command -v apt-get >/dev/null 2>&1; then
+            echo "    官方腳本安裝失敗，改用 Ubuntu 套件 dotnet-sdk-8.0 …"
+            if command -v sudo >/dev/null 2>&1; then
+                sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0
+            else
+                apt-get update && apt-get install -y dotnet-sdk-8.0
+            fi
+        else
+            echo "    .NET 8 SDK 安裝失敗，請手動安裝後重跑本腳本。" >&2
+            exit 1
+        fi
         export PATH="$HOME/.dotnet:$PATH"
         grep -q '.dotnet' "$HOME/.bashrc" 2>/dev/null || \
             echo 'export PATH="$HOME/.dotnet:$PATH"' >> "$HOME/.bashrc"
