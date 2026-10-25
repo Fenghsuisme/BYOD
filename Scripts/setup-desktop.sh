@@ -5,7 +5,7 @@
 #   1) 安裝 ibus 新酷音，並加入輸入來源
 #   2) 工作區固定為 1 個
 #   3) 左側 Dock 只留垃圾桶，並自動隱藏
-#   4) 閒置時不自動休眠
+#   4) 閒置時不自動休眠、不關螢幕、不鎖定
 #
 # 這些是考試碟的永久設定（寫入 dconf），不會在結束時還原；
 # 考試中的暫時鎖定由 desktop-lock.sh 負責。
@@ -80,5 +80,11 @@ echo "  - 閒置不自動休眠…"
 POWER=org.gnome.settings-daemon.plugins.power
 gset "$POWER" sleep-inactive-ac-type 'nothing'
 gset "$POWER" sleep-inactive-battery-type 'nothing'
+
+echo "  - 閒置不關螢幕、不鎖定…"
+# 學生在紙上演算時可能數分鐘不碰電腦；鎖定後要輸入密碼才能回到考試畫面
+gset org.gnome.desktop.session idle-delay 0
+gset org.gnome.desktop.screensaver lock-enabled false
+gset "$POWER" idle-dim false
 
 echo "  桌面設定完成。若選字窗沒出現，登出再登入一次即可。"
