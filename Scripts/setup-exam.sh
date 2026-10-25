@@ -6,8 +6,9 @@
 #   2) 安裝系統依賴（CEF 函式庫 + g++）
 #   3) 佈署 Monaco，並預先建置（還原 CEF 套件，讓複製後的碟開箱即用、免再下載）
 #   4) 在桌面建立 EXAM 啟動圖示
+#   5) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏、閒置不休眠
 #
-# 用法： ./Scripts/setup-exam.sh
+# 用法： ./Scripts/setup-exam.sh   （以考試帳號在桌面登入後執行，不要加 sudo）
 #
 set -euo pipefail
 
@@ -27,7 +28,7 @@ download() {
     fi
 }
 
-echo "==> (0/4) 基本工具（curl / ca-certificates）…"
+echo "==> (0/5) 基本工具（curl / ca-certificates）…"
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         if command -v sudo >/dev/null 2>&1; then
@@ -42,7 +43,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "==> (1/4) 確認 .NET 8 SDK…"
+echo "==> (1/5) 確認 .NET 8 SDK…"
 if ! command -v dotnet >/dev/null 2>&1; then
     if [[ -x "$HOME/.dotnet/dotnet" ]]; then
         export PATH="$HOME/.dotnet:$PATH"
@@ -58,7 +59,7 @@ fi
 echo "    dotnet $(dotnet --version)"
 
 echo ""
-echo "==> (2/4) 系統依賴（CEF 函式庫 + g++）…"
+echo "==> (2/5) 系統依賴（CEF 函式庫 + g++）…"
 if command -v sudo >/dev/null 2>&1; then
     sudo ./Scripts/install-linux-deps.sh
 else
@@ -66,14 +67,18 @@ else
 fi
 
 echo ""
-echo "==> (3/4) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
+echo "==> (3/5) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
 [[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
 [[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
 dotnet build App/ByodKioskBrowser.App.csproj -c Debug
 
 echo ""
-echo "==> (4/4) 建立 EXAM 桌面圖示…"
+echo "==> (4/5) 建立 EXAM 桌面圖示…"
 ./Scripts/install-shortcut.sh
+
+echo ""
+echo "==> (5/5) GNOME 桌面設定（新酷音 / 工作區 / Dock / 休眠）…"
+./Scripts/setup-desktop.sh
 
 echo ""
 echo "======================================"
