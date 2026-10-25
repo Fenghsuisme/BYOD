@@ -2,12 +2,14 @@
 #
 # 一鍵建置考試環境：每台考試機 git clone 本專案後各跑一次。
 # 會完成：
-#   1) 安裝 .NET 8 SDK（若尚未安裝）
-#   2) 安裝系統依賴（CEF 函式庫 + g++）
-#   3) 佈署 Monaco / pdf.js，並預先建置（下載約 200 MB 的 CEF 套件，會顯示進度）
-#   4) 在桌面建立 EXAM 啟動圖示
-#   5) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定
-#   6) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
+#   1) 先關閉閒置休眠／關螢幕／鎖定（下載很久，避免中途休眠斷線）
+#   2) 安裝基本工具（curl / ca-certificates）
+#   3) 安裝 .NET 8 SDK（若尚未安裝）
+#   4) 安裝系統依賴（CEF 函式庫 + g++）
+#   5) 佈署 Monaco / pdf.js，並預先建置（下載約 200 MB 的 CEF 套件，會顯示進度）
+#   6) 在桌面建立 EXAM 啟動圖示
+#   7) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏
+#   8) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
 #
 # 用法： ./Scripts/setup-exam.sh   （以考試帳號在桌面登入後執行，不要加 sudo）
 #
@@ -30,7 +32,11 @@ download() {
     fi
 }
 
-echo "==> (0/6) 基本工具（curl / ca-certificates）…"
+echo "==> (1/8) 關閉閒置休眠／關螢幕／鎖定（避免下載中途休眠）…"
+./Scripts/setup-desktop.sh power
+
+echo ""
+echo "==> (2/8) 基本工具（curl / ca-certificates）…"
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         if command -v sudo >/dev/null 2>&1; then
@@ -45,7 +51,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "==> (1/6) 確認 .NET 8 SDK…"
+echo "==> (3/8) 確認 .NET 8 SDK…"
 if ! command -v dotnet >/dev/null 2>&1; then
     if [[ -x "$HOME/.dotnet/dotnet" ]]; then
         export PATH="$HOME/.dotnet:$PATH"
@@ -61,7 +67,7 @@ fi
 echo "    dotnet $(dotnet --version)"
 
 echo ""
-echo "==> (2/6) 系統依賴（CEF 函式庫 + g++）…"
+echo "==> (4/8) 系統依賴（CEF 函式庫 + g++）…"
 if command -v sudo >/dev/null 2>&1; then
     sudo ./Scripts/install-linux-deps.sh
 else
@@ -69,7 +75,7 @@ else
 fi
 
 echo ""
-echo "==> (3/6) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
+echo "==> (5/8) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
 [[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
 [[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
 # 先單獨 restore 並顯示下載進度（預設輸出在下載期間完全沒字，看起來像當機）；
@@ -93,15 +99,15 @@ echo "    建置中…"
 dotnet build App/ByodKioskBrowser.App.csproj -c Debug --no-restore
 
 echo ""
-echo "==> (4/6) 建立 EXAM 桌面圖示…"
+echo "==> (6/8) 建立 EXAM 桌面圖示…"
 ./Scripts/install-shortcut.sh
 
 echo ""
-echo "==> (5/6) GNOME 桌面設定（新酷音 / 工作區 / Dock / 休眠）…"
+echo "==> (7/8) GNOME 桌面設定（新酷音 / 工作區 / Dock）…"
 ./Scripts/setup-desktop.sh
 
 echo ""
-echo "==> (6/6) Google Chrome（穩定版）…"
+echo "==> (8/8) Google Chrome（穩定版）…"
 if command -v google-chrome >/dev/null 2>&1; then
     echo "    已安裝：$(google-chrome --version)"
 elif [[ "$(dpkg --print-architecture 2>/dev/null)" != "amd64" ]]; then

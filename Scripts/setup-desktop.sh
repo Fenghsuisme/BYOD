@@ -10,9 +10,12 @@
 # 這些是考試碟的永久設定（寫入 dconf），不會在結束時還原；
 # 考試中的暫時鎖定由 desktop-lock.sh 負責。
 #
-# 用法： ./Scripts/setup-desktop.sh   （以考試帳號在桌面登入後執行，不要加 sudo）
+# 用法： ./Scripts/setup-desktop.sh [power]   （以考試帳號在桌面登入後執行，不要加 sudo）
+#   power：只做第 4 項（setup-exam.sh 在開始下載前先跑，避免下載到一半休眠或鎖定）
 #
 set -euo pipefail
+
+MODE="${1:-all}"
 
 if [[ $EUID -eq 0 ]]; then
     echo "請以考試帳號執行（不要加 sudo）：桌面設定是寫入目前使用者的 dconf。" >&2
@@ -23,11 +26,13 @@ as_root() {
     if command -v sudo >/dev/null 2>&1; then sudo "$@"; else "$@"; fi
 }
 
-echo "  - 安裝 ibus 新酷音…"
-if command -v apt-get >/dev/null 2>&1; then
-    as_root apt-get install -y ibus ibus-chewing
-else
-    echo "    非 apt 系統，請手動安裝 ibus 與 ibus-chewing。" >&2
+if [[ "$MODE" != power ]]; then
+    echo "  - 安裝 ibus 新酷音…"
+    if command -v apt-get >/dev/null 2>&1; then
+        as_root apt-get install -y ibus ibus-chewing
+    else
+        echo "    非 apt 系統，請手動安裝 ibus 與 ibus-chewing。" >&2
+    fi
 fi
 
 if ! command -v gsettings >/dev/null 2>&1 || [[ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]]; then
@@ -43,6 +48,24 @@ gset() {
         echo "    略過（此版本沒有 $1 $2）"
     fi
 }
+
+disable_idle() {
+    echo "  - 閒置不自動休眠…"
+    POWER=org.gnome.settings-daemon.plugins.power
+    gset "$POWER" sleep-inactive-ac-type 'nothing'
+    gset "$POWER" sleep-inactive-battery-type 'nothing'
+
+    echo "  - 閒置不關螢幕、不鎖定…"
+    # 學生在紙上演算時可能數分鐘不碰電腦；鎖定後要輸入密碼才能回到考試畫面
+    gset org.gnome.desktop.session idle-delay 0
+    gset org.gnome.desktop.screensaver lock-enabled false
+    gset "$POWER" idle-dim false
+}
+
+disable_idle
+if [[ "$MODE" == power ]]; then
+    exit 0
+fi
 
 echo "  - 加入新酷音輸入來源…"
 SOURCES_SCHEMA=org.gnome.desktop.input-sources
@@ -75,16 +98,5 @@ gset "$DOCK" show-trash true
 gset "$DOCK" dock-fixed false
 gset "$DOCK" autohide true
 gset "$DOCK" intellihide false
-
-echo "  - 閒置不自動休眠…"
-POWER=org.gnome.settings-daemon.plugins.power
-gset "$POWER" sleep-inactive-ac-type 'nothing'
-gset "$POWER" sleep-inactive-battery-type 'nothing'
-
-echo "  - 閒置不關螢幕、不鎖定…"
-# 學生在紙上演算時可能數分鐘不碰電腦；鎖定後要輸入密碼才能回到考試畫面
-gset org.gnome.desktop.session idle-delay 0
-gset org.gnome.desktop.screensaver lock-enabled false
-gset "$POWER" idle-dim false
 
 echo "  桌面設定完成。若選字窗沒出現，登出再登入一次即可。"
