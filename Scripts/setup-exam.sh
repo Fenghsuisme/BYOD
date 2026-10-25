@@ -7,6 +7,7 @@
 #   3) 佈署 Monaco，並預先建置（還原 CEF 套件，讓複製後的碟開箱即用、免再下載）
 #   4) 在桌面建立 EXAM 啟動圖示
 #   5) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定
+#   6) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
 #
 # 用法： ./Scripts/setup-exam.sh   （以考試帳號在桌面登入後執行，不要加 sudo）
 #
@@ -28,7 +29,7 @@ download() {
     fi
 }
 
-echo "==> (0/5) 基本工具（curl / ca-certificates）…"
+echo "==> (0/6) 基本工具（curl / ca-certificates）…"
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         if command -v sudo >/dev/null 2>&1; then
@@ -43,7 +44,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "==> (1/5) 確認 .NET 8 SDK…"
+echo "==> (1/6) 確認 .NET 8 SDK…"
 if ! command -v dotnet >/dev/null 2>&1; then
     if [[ -x "$HOME/.dotnet/dotnet" ]]; then
         export PATH="$HOME/.dotnet:$PATH"
@@ -59,7 +60,7 @@ fi
 echo "    dotnet $(dotnet --version)"
 
 echo ""
-echo "==> (2/5) 系統依賴（CEF 函式庫 + g++）…"
+echo "==> (2/6) 系統依賴（CEF 函式庫 + g++）…"
 if command -v sudo >/dev/null 2>&1; then
     sudo ./Scripts/install-linux-deps.sh
 else
@@ -67,18 +68,38 @@ else
 fi
 
 echo ""
-echo "==> (3/5) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
+echo "==> (3/6) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
 [[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
 [[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
 dotnet build App/ByodKioskBrowser.App.csproj -c Debug
 
 echo ""
-echo "==> (4/5) 建立 EXAM 桌面圖示…"
+echo "==> (4/6) 建立 EXAM 桌面圖示…"
 ./Scripts/install-shortcut.sh
 
 echo ""
-echo "==> (5/5) GNOME 桌面設定（新酷音 / 工作區 / Dock / 休眠）…"
+echo "==> (5/6) GNOME 桌面設定（新酷音 / 工作區 / Dock / 休眠）…"
 ./Scripts/setup-desktop.sh
+
+echo ""
+echo "==> (6/6) Google Chrome（穩定版）…"
+if command -v google-chrome >/dev/null 2>&1; then
+    echo "    已安裝：$(google-chrome --version)"
+elif [[ "$(dpkg --print-architecture 2>/dev/null)" != "amd64" ]]; then
+    echo "    Google Chrome 只提供 x64（amd64）版本，此機器略過。" >&2
+else
+    # 官方 .deb 安裝時會一併加入 Google 的 apt 套件庫，之後隨系統更新
+    CHROME_DEB="$(mktemp --suffix=.deb)"
+    download https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb "$CHROME_DEB"
+    chmod 644 "$CHROME_DEB"
+    if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get install -y "$CHROME_DEB"
+    else
+        apt-get install -y "$CHROME_DEB"
+    fi
+    rm -f "$CHROME_DEB"
+    echo "    已安裝：$(google-chrome --version)"
+fi
 
 echo ""
 echo "======================================"
