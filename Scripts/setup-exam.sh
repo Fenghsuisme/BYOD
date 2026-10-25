@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# 一鍵建置「考試環境碟」（在這隻碟上跑一次，之後整碟複製即可）。
+# 一鍵建置考試環境：每台考試機 git clone 本專案後各跑一次。
 # 會完成：
 #   1) 安裝 .NET 8 SDK（若尚未安裝）
 #   2) 安裝系統依賴（CEF 函式庫 + g++）
-#   3) 佈署 Monaco，並預先建置（還原 CEF 套件，讓複製後的碟開箱即用、免再下載）
+#   3) 佈署 Monaco / pdf.js，並預先建置（下載約 200 MB 的 CEF 套件，會顯示進度）
 #   4) 在桌面建立 EXAM 啟動圖示
 #   5) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定
 #   6) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
@@ -21,9 +21,10 @@ cd "$ROOT"
 download() {
     # download <URL> <輸出檔>
     if command -v curl >/dev/null 2>&1; then
-        curl -sSL "$1" -o "$2"
+        # 連線逾時 + 自動重試：網路不穩時不會無限期卡住
+        curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 3 "$1" -o "$2"
     elif command -v wget >/dev/null 2>&1; then
-        wget -qO "$2" "$1"
+        wget -q -T 20 -t 3 -O "$2" "$1"
     else
         return 1
     fi
@@ -71,7 +72,25 @@ echo ""
 echo "==> (3/6) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
 [[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
 [[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
-dotnet build App/ByodKioskBrowser.App.csproj -c Debug
+# 先單獨 restore 並顯示下載進度（預設輸出在下載期間完全沒字，看起來像當機）；
+# 第一次要從 nuget.org 抓約 200 MB（CEF），解壓後約 700 MB，慢的網路或隨身碟要等數分鐘
+echo "    下載套件（第一次約 200 MB，請耐心等候）…"
+restored=false
+for attempt in 1 2 3; do
+    if dotnet restore App/ByodKioskBrowser.App.csproj -v n 2>&1 \
+        | awk '/GET https|OK https|Installed |error|warning NU/ { sub(/^[ \t]+/, ""); print "    " $0; fflush() }'; then
+        restored=true
+        break
+    fi
+    echo "    下載失敗（第 $attempt 次），5 秒後重試…" >&2
+    sleep 5
+done
+if [[ "$restored" != true ]]; then
+    echo "    套件下載失敗：請確認網路可連到 https://api.nuget.org 後重跑本腳本。" >&2
+    exit 1
+fi
+echo "    建置中…"
+dotnet build App/ByodKioskBrowser.App.csproj -c Debug --no-restore
 
 echo ""
 echo "==> (4/6) 建立 EXAM 桌面圖示…"
@@ -103,8 +122,7 @@ fi
 
 echo ""
 echo "======================================"
-echo " 完成！這隻考試環境碟已就緒："
+echo " 完成！這台考試機已就緒："
 echo "   - 桌面已有 EXAM 圖示，點兩下開始考試"
-echo "   - 環境（SDK / 依賴 / Monaco / 已建置）皆已內含"
-echo " 接下來把整碟完整複製即可，所有複本開箱即用。"
+echo "   - 請登出再登入一次，讓新酷音與 Dock 設定生效"
 echo "======================================"

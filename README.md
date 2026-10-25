@@ -58,16 +58,17 @@ BYOD/
 
 ## 部署：考試環境碟（Linux）
 
-做法為「**先弄好一隻黃金環境碟，之後整碟複製**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證）。
+做法為「**每台考試機各自 clone 後跑一次 setup**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證）。
 
-### 一鍵建置（在黃金碟上跑一次）
+### 一鍵建置（每台跑一次，以考試帳號在桌面登入後執行，不要加 sudo）
 ```bash
+git clone https://github.com/Fenghsuisme/BYOD.git ~/BYOD
 cd ~/BYOD
 ./Scripts/setup-exam.sh
 ```
-會自動完成：安裝 .NET 8 SDK（若無）→ 安裝 CEF 系統函式庫與 g++ → 佈署 Monaco 並預先建置（還原 CEF 套件）→ 桌面建立 **EXAM** 圖示。
+會自動完成：安裝 .NET 8 SDK（若無）→ 安裝 CEF 系統函式庫與 g++ → 佈署 Monaco 並預先建置（下載約 200 MB 的 CEF 套件）→ 建立桌面捷徑 → GNOME 桌面設定（新酷音、1 個工作區、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定）→ 安裝 Google Chrome。
 
-完成後，桌面雙擊 **EXAM** 即可開始考試。之後**整碟完整複製**，所有複本開箱即用（環境已內含、免再下載）。
+完成後登出再登入一次，桌面雙擊捷徑即可開始考試。
 
 > 考試機需有網路以安裝系統依賴（走 apt/dnf/pacman）。
 > CEF 在 Linux 以免 root 的 `NoSandbox` 執行；Wayland 下無法硬鎖 Alt+Tab（見上方強度表）。

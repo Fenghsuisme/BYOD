@@ -21,9 +21,9 @@ echo "  $URL"
 
 # curl 或 wget 皆可
 if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$URL" -o "$TMP/monaco.tgz"
+    curl -fsSL --connect-timeout 20 --retry 3 --retry-delay 3 "$URL" -o "$TMP/monaco.tgz"
 elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TMP/monaco.tgz" "$URL"
+    wget -q -T 20 -t 3 -O "$TMP/monaco.tgz" "$URL"
 else
     echo "找不到 curl 或 wget，無法下載。" >&2
     exit 1
