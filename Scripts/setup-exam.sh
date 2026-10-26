@@ -36,7 +36,8 @@ echo "==> (1/7) 關閉閒置休眠／關螢幕／鎖定（避免下載中途休�
 
 echo ""
 echo "==> (2/7) 基本工具（curl / ca-certificates）…"
-if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+# Ubuntu 26.04 桌面版預設只有 wget 沒有 curl；後續下載（進度條、重試）都用 curl，一律確保有裝
+if ! command -v curl >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         if command -v sudo >/dev/null 2>&1; then
             sudo apt-get update && sudo apt-get install -y curl ca-certificates
@@ -44,7 +45,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
             apt-get update && apt-get install -y curl ca-certificates
         fi
     else
-        echo "    找不到 curl/wget，且非 apt 系統；請先手動安裝 curl。" >&2
+        echo "    找不到 curl，且非 apt 系統；請先手動安裝 curl。" >&2
         exit 1
     fi
 fi

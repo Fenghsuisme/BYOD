@@ -13,11 +13,16 @@ ROOT="$(dirname "$(dirname "$SELF")")"
 DIST="$ROOT/dist"
 BASE_URL="${BYOD_RELEASE_URL:-https://github.com/Fenghsuisme/BYOD/releases/download/linux-latest}"
 
+if ! command -v curl >/dev/null 2>&1; then
+    echo "    找不到 curl，請先執行： sudo apt-get install -y curl" >&2
+    exit 1
+fi
+
 # 連線逾時 + 自動重試：網路不穩時不會無限期卡住
 CURL=(curl -fL --connect-timeout 20 --retry 3 --retry-delay 3)
 
 remote_commit="$("${CURL[@]}" -sS "$BASE_URL/BUILD_COMMIT" | tr -d '[:space:]')" || remote_commit=""
-local_commit="$(tr -d '[:space:]' < "$DIST/BUILD_COMMIT" 2>/dev/null || true)"
+local_commit="$(tr -d '[:space:]' 2>/dev/null < "$DIST/BUILD_COMMIT" || true)"
 if [[ -n "$remote_commit" && "$remote_commit" == "$local_commit" && -x "$DIST/ByodKioskBrowser" ]]; then
     echo "    已是最新版（${remote_commit:0:7}），不需下載。"
     exit 0
