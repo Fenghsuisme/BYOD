@@ -66,9 +66,11 @@ git clone https://github.com/Fenghsuisme/BYOD.git ~/BYOD
 cd ~/BYOD
 ./Scripts/setup-exam.sh
 ```
-會自動完成：安裝 .NET 8 SDK（若無）→ 安裝 CEF 系統函式庫與 g++ → 佈署 Monaco 並預先建置（下載約 200 MB 的 CEF 套件）→ 建立桌面捷徑 → GNOME 桌面設定（新酷音、1 個工作區、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定）→ 安裝 Google Chrome。
+會自動完成：關閉閒置休眠 → 安裝 g++ / gcc 與 CEF 系統函式庫（已裝的略過）→ 下載 GitHub Actions 預先建好的考試程式到 `dist/`（約 200 MB，考試機不需 .NET SDK、不需建置）→ 建立桌面捷徑 → GNOME 桌面設定（新酷音、1 個工作區、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定）→ 安裝 Google Chrome。
 
 完成後登出再登入一次，桌面雙擊捷徑即可開始考試。
+
+更新考試機：`git pull && ./Scripts/fetch-release.sh`（已是最新版就不會重新下載）。每次推到 main，`.github/workflows/release-linux.yml` 會自動重建 Release `linux-latest`。
 
 > 考試機需有網路以安裝系統依賴（走 apt/dnf/pacman）。
 > CEF 在 Linux 以免 root 的 `NoSandbox` 執行；Wayland 下無法硬鎖 Alt+Tab（見上方強度表）。

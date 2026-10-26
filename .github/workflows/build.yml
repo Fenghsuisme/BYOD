@@ -1,6 +1,6 @@
 name: Build (Linux)
 
-# 驗證編譯與單元測試（考試碟部署採「整碟複製」，不在 CI 產出成品）。
+# 驗證編譯與單元測試（考試機成品由 release-linux.yml 產出）。
 on:
   push:
     branches: ["**"]

@@ -1,0 +1,56 @@
+name: Release (Linux x64)
+
+# 每次推到 main 自動建好 Linux 考試機成品，放到 Release「linux-latest」。
+# 考試機的 setup-exam.sh 直接下載這個成品，不必安裝 .NET SDK、不必抓 NuGet、不必建置。
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-linux
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Fetch Monaco / pdf.js
+        run: |
+          ./Scripts/fetch-monaco.sh
+          ./Scripts/fetch-pdfjs.sh
+
+      - name: Publish (self-contained，考試機不需 .NET)
+        run: dotnet publish App/ByodKioskBrowser.App.csproj -c Release -r linux-x64 --self-contained true -o publish
+
+      - name: Trim
+        run: |
+          # CEF 介面語系只留英文與繁中；除錯符號檔用不到
+          find publish -path '*/locales/*.pak' ! -name 'en-US.pak' ! -name 'zh-TW.pak' -delete
+          find publish -name '*.pdb' -delete
+          echo "$GITHUB_SHA" > publish/BUILD_COMMIT
+
+      - name: Package
+        run: tar -czf byod-linux-x64.tar.gz -C publish .
+
+      - name: Upload to release linux-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 先刪舊的再建新的，讓 tag 指向這次的 commit；下載網址固定不變
+          gh release delete linux-latest --cleanup-tag --yes || true
+          # BUILD_COMMIT 單獨上傳：考試機先比對它，已是最新就不重下（不走 API，避免整間教室撞到速率限制）
+          cp publish/BUILD_COMMIT BUILD_COMMIT
+          gh release create linux-latest byod-linux-x64.tar.gz BUILD_COMMIT \
+            --target "$GITHUB_SHA" \
+            --title "Linux x64（最新）" \
+            --notes "自動建置自 ${GITHUB_SHA}。考試機由 Scripts/setup-exam.sh 下載使用。"

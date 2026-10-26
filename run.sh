@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
 # 開發啟動器：一鍵跑起 BYOD 防弊瀏覽器（含編輯器）。
-# 會自動確認 dotnet 在 PATH、必要時佈署 Monaco，再執行 dotnet run。
+# 有 dist/（setup-exam.sh 下載的預建成品）就直接執行它；
+# 否則為開發模式：確認 dotnet 在 PATH、必要時佈署 Monaco，再執行 dotnet run。
 #
 # 用法：
 #   ./run.sh                      一般啟動（全螢幕 kiosk）
 #   BYOD_WINDOWED=1 ./run.sh       視窗模式（有邊框，方便觀察）
-#   ./run.sh -c Release            傳遞額外參數給 dotnet run
+#   ./run.sh -c Release            傳遞額外參數給 dotnet run（開發模式）
+#   BYOD_DEV=1 ./run.sh            有 dist/ 也強制用原始碼 dotnet run
 #
 # 離開：Ctrl+Alt+Shift+Q，或右上「結束考試」按鈕。
 #
@@ -16,21 +18,26 @@ set -euo pipefail
 SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
 cd "$(dirname "$SELF")"
 
-# 確保 dotnet 在 PATH（dotnet-install.sh 預設裝於 ~/.dotnet）
-if ! command -v dotnet >/dev/null 2>&1; then
-    if [[ -x "$HOME/.dotnet/dotnet" ]]; then
-        export PATH="$HOME/.dotnet:$PATH"
-        export DOTNET_ROOT="$HOME/.dotnet"
-    else
-        echo "找不到 dotnet。請先安裝 .NET 8 SDK（見 README）。" >&2
-        exit 1
+PREBUILT=false
+if [[ -x dist/ByodKioskBrowser && "${BYOD_DEV:-}" != "1" ]]; then
+    PREBUILT=true
+else
+    # 確保 dotnet 在 PATH（dotnet-install.sh 預設裝於 ~/.dotnet）
+    if ! command -v dotnet >/dev/null 2>&1; then
+        if [[ -x "$HOME/.dotnet/dotnet" ]]; then
+            export PATH="$HOME/.dotnet:$PATH"
+            export DOTNET_ROOT="$HOME/.dotnet"
+        else
+            echo "找不到考試程式（dist/）也找不到 dotnet。請先執行 ./Scripts/setup-exam.sh。" >&2
+            exit 1
+        fi
     fi
-fi
 
-# Monaco 本地資源若尚未佈署，先抓一次
-if [[ ! -f "App/Assets/webapp/vs/loader.js" ]]; then
-    echo "Monaco 尚未佈署，執行 Scripts/fetch-monaco.sh …"
-    ./Scripts/fetch-monaco.sh
+    # Monaco 本地資源若尚未佈署，先抓一次
+    if [[ ! -f "App/Assets/webapp/vs/loader.js" ]]; then
+        echo "Monaco 尚未佈署，執行 Scripts/fetch-monaco.sh …"
+        ./Scripts/fetch-monaco.sh
+    fi
 fi
 
 # 題目 PDF 的 Google Drive 檔案 ID（PDF 模式用）；pdf-id.txt 內第一個非註解行
@@ -40,7 +47,7 @@ if [[ -f "pdf-id.txt" ]]; then
 fi
 
 # 確保 C/C++ 編譯器存在，否則編輯器的「▶ 執行」無法編譯。
-# 注意：Linux 用的是 g++ / gcc（build-essential）；MinGW 是「Windows 版 gcc」，
+# 注意：Linux 用的是 g++ / gcc；MinGW 是「Windows 版 gcc」，
 # 僅在 Windows 上部署時才需要，Linux 用不到。
 if ! command -v g++ >/dev/null 2>&1; then
     echo "找不到 g++（C/C++ 編譯器）。將執行 Scripts/install-linux-deps.sh 安裝（需 sudo）…"
@@ -75,6 +82,10 @@ echo "終端輸出將同時記錄到：$LOG"
     echo "[BYOD] 輸入法行程：$(pgrep -a 'ibus|fcitx' 2>/dev/null | tr '\n' ';' || true)"
 } | tee "$LOG"
 
-# 用 tee 同時輸出到畫面與檔案；保留 dotnet run 的結束碼
+# 用 tee 同時輸出到畫面與檔案；保留程式的結束碼
 set -o pipefail
-dotnet run --project App/ByodKioskBrowser.App.csproj "$@" 2>&1 | tee -a "$LOG"
+if [[ "$PREBUILT" == true ]]; then
+    ./dist/ByodKioskBrowser "$@" 2>&1 | tee -a "$LOG"
+else
+    dotnet run --project App/ByodKioskBrowser.App.csproj "$@" 2>&1 | tee -a "$LOG"
+fi

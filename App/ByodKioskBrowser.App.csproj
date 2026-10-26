@@ -18,6 +18,8 @@
       arm64 需改用 CefGlue.Avalonia.ARM64 套件（見 README）。
     -->
     <RuntimeIdentifiers>win-x64;linux-x64</RuntimeIdentifiers>
+    <ByodCefX64 Condition="'$(RuntimeIdentifier)' == 'linux-x64' or '$(RuntimeIdentifier)' == 'win-x64'">true</ByodCefX64>
+    <ByodCefX64 Condition="'$(RuntimeIdentifier)' == '' and !$([MSBuild]::IsOSPlatform('OSX'))">true</ByodCefX64>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,11 +33,12 @@
       - Windows / Linux（CI 與考試機部署）→ x64 套件
       - macOS（開發機，通常為 Apple Silicon）→ ARM64 套件，可在 Mac 直接執行驗證
       若需在 Windows/Linux 部署 ARM64，改用對應的 .ARM64 套件即可。
+      有指定 -r linux-x64 / win-x64（發佈考試機成品）時一律用 x64 套件，Mac 上也能交叉發佈。
     -->
     <PackageReference Include="CefGlue.Avalonia" Version="120.6099.211"
-                      Condition="!$([MSBuild]::IsOSPlatform('OSX'))" />
+                      Condition="'$(ByodCefX64)' == 'true'" />
     <PackageReference Include="CefGlue.Avalonia.ARM64" Version="120.6099.211"
-                      Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+                      Condition="'$(ByodCefX64)' != 'true'" />
   </ItemGroup>
 
   <ItemGroup>

@@ -13,12 +13,12 @@ fi
 
 if command -v apt-get >/dev/null 2>&1; then
     echo "偵測到 apt（Debian/Ubuntu）"
-    apt-get update
 
     # 每項可用「新名|舊名」列出（因應 Ubuntu 24.04+ 的 t64 轉換）；
     # 逐一挑選實際可安裝者，避免虛擬套件或單一缺項導致整批中止。
     CANDIDATES=(
-        "build-essential"
+        # 編輯器「▶ 執行」編譯 C / C++ 用（不裝 build-essential，省掉用不到的 make / dpkg-dev 等）
+        "g++" "gcc"
         "libnss3" "libnspr4"
         "libatk1.0-0t64|libatk1.0-0" "libatk-bridge2.0-0t64|libatk-bridge2.0-0" "libatspi2.0-0t64|libatspi2.0-0"
         "libcups2t64|libcups2"
@@ -31,8 +31,25 @@ if command -v apt-get >/dev/null 2>&1; then
         "fonts-liberation"
     )
 
-    TO_INSTALL=()
+    # 已裝的先略過（Ubuntu 桌面版幾乎都內建），全部都有就不必 apt-get update
+    installed() { dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q "ok installed"; }
+    MISSING=()
     for entry in "${CANDIDATES[@]}"; do
+        IFS='|' read -ra alts <<< "$entry"
+        found=false
+        for a in "${alts[@]}"; do
+            if installed "$a"; then found=true; break; fi
+        done
+        [[ "$found" == true ]] || MISSING+=("$entry")
+    done
+    if [[ ${#MISSING[@]} -eq 0 ]]; then
+        echo "全部已安裝，略過。"
+        exit 0
+    fi
+    apt-get update
+
+    TO_INSTALL=()
+    for entry in "${MISSING[@]}"; do
         IFS='|' read -ra alts <<< "$entry"
         picked=""
         for a in "${alts[@]}"; do
@@ -53,7 +70,7 @@ if command -v apt-get >/dev/null 2>&1; then
 elif command -v dnf >/dev/null 2>&1; then
     echo "偵測到 dnf（Fedora/RHEL）"
     dnf install -y \
-        gcc gcc-c++ make \
+        gcc gcc-c++ \
         nss nspr \
         at-spi2-atk at-spi2-core atk \
         cups-libs \
@@ -67,7 +84,7 @@ elif command -v dnf >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
     echo "偵測到 pacman（Arch）"
     pacman -Sy --noconfirm \
-        gcc make \
+        gcc \
         nss nspr \
         at-spi2-core atk \
         cups \

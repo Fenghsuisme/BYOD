@@ -28,7 +28,9 @@ as_root() {
 
 if [[ "$MODE" != power ]]; then
     echo "  - 安裝 ibus 新酷音…"
-    if command -v apt-get >/dev/null 2>&1; then
+    if dpkg-query -W -f='${Status}' ibus-chewing 2>/dev/null | grep -q "ok installed"; then
+        echo "    已安裝"
+    elif command -v apt-get >/dev/null 2>&1; then
         as_root apt-get install -y ibus ibus-chewing
     else
         echo "    非 apt 系統，請手動安裝 ibus 與 ibus-chewing。" >&2

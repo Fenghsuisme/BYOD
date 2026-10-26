@@ -4,12 +4,11 @@
 # 會完成：
 #   1) 先關閉閒置休眠／關螢幕／鎖定（下載很久，避免中途休眠斷線）
 #   2) 安裝基本工具（curl / ca-certificates）
-#   3) 安裝 .NET 8 SDK（若尚未安裝）
-#   4) 安裝系統依賴（CEF 函式庫 + g++）
-#   5) 佈署 Monaco / pdf.js，並預先建置（下載約 200 MB 的 CEF 套件，會顯示進度）
-#   6) 在桌面建立 EXAM 啟動圖示
-#   7) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏
-#   8) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
+#   3) 安裝系統依賴（g++ / gcc + CEF 函式庫；已裝的略過）
+#   4) 下載 GitHub Actions 預先建好的考試程式到 dist/（約 200 MB，不需 .NET SDK、不需建置）
+#   5) 在桌面建立 EXAM 啟動圖示
+#   6) GNOME 桌面設定：新酷音、工作區 1 個、Dock 只留垃圾桶並自動隱藏
+#   7) 安裝 Google Chrome（穩定版，Ubuntu 用的 .deb）
 #
 # 用法： ./Scripts/setup-exam.sh   （以考試帳號在桌面登入後執行，不要加 sudo）
 #
@@ -32,11 +31,11 @@ download() {
     fi
 }
 
-echo "==> (1/8) 關閉閒置休眠／關螢幕／鎖定（避免下載中途休眠）…"
+echo "==> (1/7) 關閉閒置休眠／關螢幕／鎖定（避免下載中途休眠）…"
 ./Scripts/setup-desktop.sh power
 
 echo ""
-echo "==> (2/8) 基本工具（curl / ca-certificates）…"
+echo "==> (2/7) 基本工具（curl / ca-certificates）…"
 if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
     if command -v apt-get >/dev/null 2>&1; then
         if command -v sudo >/dev/null 2>&1; then
@@ -51,41 +50,7 @@ if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
 fi
 
 echo ""
-echo "==> (3/8) 確認 .NET 8 SDK…"
-if ! command -v dotnet >/dev/null 2>&1; then
-    if [[ -x "$HOME/.dotnet/dotnet" ]]; then
-        export PATH="$HOME/.dotnet:$PATH"
-    else
-        echo "    安裝 .NET 8 SDK 到 ~/.dotnet …"
-        download https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh
-        # 先查好確切版本再安裝：只給 --channel 時腳本會走 aka.ms 轉址，
-        # 而它目前轉到已停用的 dotnetorigin.blob.core.windows.net（HTTP 409），且不會改試其他來源
-        DOTNET_VERSION=""
-        if download https://builds.dotnet.microsoft.com/dotnet/Sdk/8.0/latest.version /tmp/dotnet-latest.version; then
-            DOTNET_VERSION="$(tail -n1 /tmp/dotnet-latest.version | tr -d '[:space:]')"
-        fi
-        if [[ -n "$DOTNET_VERSION" ]] && bash /tmp/dotnet-install.sh --version "$DOTNET_VERSION"; then
-            :
-        elif command -v apt-get >/dev/null 2>&1; then
-            echo "    官方腳本安裝失敗，改用 Ubuntu 套件 dotnet-sdk-8.0 …"
-            if command -v sudo >/dev/null 2>&1; then
-                sudo apt-get update && sudo apt-get install -y dotnet-sdk-8.0
-            else
-                apt-get update && apt-get install -y dotnet-sdk-8.0
-            fi
-        else
-            echo "    .NET 8 SDK 安裝失敗，請手動安裝後重跑本腳本。" >&2
-            exit 1
-        fi
-        export PATH="$HOME/.dotnet:$PATH"
-        grep -q '.dotnet' "$HOME/.bashrc" 2>/dev/null || \
-            echo 'export PATH="$HOME/.dotnet:$PATH"' >> "$HOME/.bashrc"
-    fi
-fi
-echo "    dotnet $(dotnet --version)"
-
-echo ""
-echo "==> (4/8) 系統依賴（CEF 函式庫 + g++）…"
+echo "==> (3/7) 系統依賴（g++ / gcc + CEF 函式庫，已裝的略過）…"
 if command -v sudo >/dev/null 2>&1; then
     sudo ./Scripts/install-linux-deps.sh
 else
@@ -93,39 +58,19 @@ else
 fi
 
 echo ""
-echo "==> (5/8) Monaco / pdf.js + 預先建置（還原 CEF 套件）…"
-[[ -f App/Assets/webapp/vs/loader.js ]] || ./Scripts/fetch-monaco.sh
-[[ -f App/Assets/webapp/pdfjs/pdf.min.js ]] || ./Scripts/fetch-pdfjs.sh
-# 先單獨 restore 並顯示下載進度（預設輸出在下載期間完全沒字，看起來像當機）；
-# 第一次要從 nuget.org 抓約 200 MB（CEF），解壓後約 700 MB，慢的網路或隨身碟要等數分鐘
-echo "    下載套件（第一次約 200 MB，請耐心等候）…"
-restored=false
-for attempt in 1 2 3; do
-    if dotnet restore App/ByodKioskBrowser.App.csproj -v n 2>&1 \
-        | awk '/GET https|OK https|Installed |error|warning NU/ { sub(/^[ \t]+/, ""); print "    " $0; fflush() }'; then
-        restored=true
-        break
-    fi
-    echo "    下載失敗（第 $attempt 次），5 秒後重試…" >&2
-    sleep 5
-done
-if [[ "$restored" != true ]]; then
-    echo "    套件下載失敗：請確認網路可連到 https://api.nuget.org 後重跑本腳本。" >&2
-    exit 1
-fi
-echo "    建置中…"
-dotnet build App/ByodKioskBrowser.App.csproj -c Debug --no-restore
+echo "==> (4/7) 下載預先建好的考試程式（不需 .NET SDK、不需建置）…"
+./Scripts/fetch-release.sh
 
 echo ""
-echo "==> (6/8) 建立 EXAM 桌面圖示…"
+echo "==> (5/7) 建立 EXAM 桌面圖示…"
 ./Scripts/install-shortcut.sh
 
 echo ""
-echo "==> (7/8) GNOME 桌面設定（新酷音 / 工作區 / Dock）…"
+echo "==> (6/7) GNOME 桌面設定（新酷音 / 工作區 / Dock）…"
 ./Scripts/setup-desktop.sh
 
 echo ""
-echo "==> (8/8) Google Chrome（穩定版）…"
+echo "==> (7/7) Google Chrome（穩定版）…"
 if command -v google-chrome >/dev/null 2>&1; then
     echo "    已安裝：$(google-chrome --version)"
 elif [[ "$(dpkg --print-architecture 2>/dev/null)" != "amd64" ]]; then
