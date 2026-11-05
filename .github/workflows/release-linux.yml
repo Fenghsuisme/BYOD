@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # 固定版本：ubuntu-latest 會被 GitHub 換成 26.04，建置環境不該隨之變動
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

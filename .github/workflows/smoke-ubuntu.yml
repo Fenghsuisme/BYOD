@@ -73,6 +73,12 @@ jobs:
         run: |
           echo "== app.log =="; tail -n 80 app.log || true
           echo "== cef.log =="; tail -n 80 dist/logs/cef.log || true
+          # 未登入也看得到的 annotation（job log 需登入才能下載）
+          for f in app.log dist/logs/cef.log; do
+            [ -s "$f" ] || continue
+            body="$(tail -n 40 "$f" | cut -c1-300 | sed ':a;N;$!ba;s/%/%25/g;s/\r//g;s/\n/%0A/g')"
+            echo "::warning title=${{ matrix.ubuntu }} $f::$body"
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
