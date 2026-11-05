@@ -1,0 +1,85 @@
+name: Smoke test (Ubuntu versions)
+
+# 在各 Ubuntu 版本的乾淨容器裡，照考試機流程跑一次：
+# install-linux-deps.sh → fetch-release.sh → 以虛擬螢幕（Xvfb）啟動考試程式 30 秒。
+# 驗證系統函式庫、CEF 啟動、g++ 編譯在該版本可用；截圖存成 artifact。
+# 無法驗證 GNOME / Wayland / 輸入法，那些仍須實機確認。
+on:
+  workflow_run:
+    workflows: ["Release (Linux x64)"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu: ["22.04", "24.04", "26.04"]
+    container:
+      image: ubuntu:${{ matrix.ubuntu }}
+      # Chromium 需要較大的 /dev/shm（Docker 預設 64 MB 會讓 renderer 崩潰）
+      options: --shm-size=2g
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Base tools
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y curl ca-certificates xvfb xauth x11-apps imagemagick procps dbus-x11
+
+      - name: install-linux-deps.sh
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: ./Scripts/install-linux-deps.sh
+
+      - name: g++ compiles
+        run: |
+          printf '#include <iostream>\nint main(){std::cout<<"ok";}\n' > /tmp/t.cpp
+          g++ /tmp/t.cpp -o /tmp/t && test "$(/tmp/t)" = ok
+
+      - name: fetch-release.sh
+        run: ./Scripts/fetch-release.sh
+
+      - name: Launch under Xvfb (30 s)
+        run: |
+          Xvfb :99 -screen 0 1600x900x24 &
+          export DISPLAY=:99
+          sleep 2
+          ./dist/ByodKioskBrowser > app.log 2>&1 &
+          APP=$!
+          sleep 30
+          import -window root "screenshot-${{ matrix.ubuntu }}.png" || true
+          echo "== 子行程（CEF renderer / gpu 等）=="
+          ps -o pid,args --ppid "$APP" || true
+          if ! kill -0 "$APP" 2>/dev/null; then
+            echo "::error::考試程式在 30 秒內結束（崩潰）"
+            exit 1
+          fi
+          renderers=$(pgrep -fc -- '--type=renderer' || true)
+          echo "renderer 行程數：$renderers"
+          if [ "${renderers:-0}" -lt 1 ]; then
+            echo "::error::CEF renderer 沒有啟動"
+            exit 1
+          fi
+          kill -9 "$APP" || true
+
+      - name: Logs
+        if: always()
+        run: |
+          echo "== app.log =="; tail -n 80 app.log || true
+          echo "== cef.log =="; tail -n 80 dist/logs/cef.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-${{ matrix.ubuntu }}
+          path: |
+            screenshot-*.png
+            app.log
+            dist/logs/cef.log
+          if-no-files-found: ignore
