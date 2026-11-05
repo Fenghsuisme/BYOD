@@ -50,7 +50,10 @@ BYOD/
 ├── tests/ByodKioskBrowser.Tests/     # xUnit 測試
 ├── run.sh                            # 啟動器（dotnet run）
 └── Scripts/
-    ├── setup-exam.sh                  # 一鍵建置考試環境碟（SDK/依賴/Monaco/建置/EXAM 圖示）
+    ├── setup-exam.sh                  # 一鍵建置考試母碟（依賴/下載預建成品/EXAM 圖示/桌面設定）
+    ├── setup-chrome.sh                # 安裝 Chrome 並鎖定只能開 Moodle（交作業）
+    ├── prepare-image.sh               # 母碟去個人化（Clonezilla 擷取前執行）
+    ├── check-exam.sh                  # 複製機健康檢查
     ├── install-linux-deps.sh          # 安裝 CEF 系統函式庫 + g++
     ├── install-shortcut.sh            # 建立桌面 EXAM 圖示
     └── fetch-monaco.sh                # 下載並佈署 Monaco
@@ -58,21 +61,39 @@ BYOD/
 
 ## 部署：考試環境碟（Linux）
 
-做法為「**每台考試機各自 clone 後跑一次 setup**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證）。
+做法為「**一台母碟 → Clonezilla 複製到整間教室**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證），複製機可為不同型號。
 
-### 一鍵建置（每台跑一次，以考試帳號在桌面登入後執行，不要加 sudo）
+### 1. 製作母碟（以考試帳號在桌面登入後執行，不要加 sudo）
 ```bash
 git clone https://github.com/Fenghsuisme/BYOD.git ~/BYOD
 cd ~/BYOD
 ./Scripts/setup-exam.sh
 ```
-會自動完成：關閉閒置休眠 → 安裝 g++ / gcc 與 CEF 系統函式庫（已裝的略過）→ 下載 GitHub Actions 預先建好的考試程式到 `dist/`（約 200 MB，考試機不需 .NET SDK、不需建置）→ 建立桌面捷徑 → GNOME 桌面設定（新酷音、1 個工作區、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定）→ 安裝 Google Chrome。
+會自動完成：關閉閒置休眠 → 安裝 g++ / gcc 與 CEF 系統函式庫（已裝的略過）→ 下載 GitHub Actions 預先建好的考試程式到 `dist/`（約 200 MB，不需 .NET SDK、不需建置）→ 安裝 Google Chrome 並以企業政策鎖定只能開 Moodle（`elearningv4.nuk.edu.tw`，交作業用）→ 建立桌面捷徑（程式設計 / OOP & DS / 交作業）→ GNOME 桌面設定（新酷音、1 個工作區、Dock 只留垃圾桶並自動隱藏、閒置不休眠不鎖定）。
 
-完成後登出再登入一次，桌面雙擊捷徑即可開始考試。
+完成後登出再登入一次，**兩個桌面圖示都實際開一次、測過再繼續**。
 
-更新考試機：`git pull && ./Scripts/fetch-release.sh`（已是最新版就不會重新下載）。每次推到 main，`.github/workflows/release-linux.yml` 會自動重建 Release `linux-latest`。
+### 2. 去個人化並擷取
+```bash
+./Scripts/prepare-image.sh --shutdown
+```
+清除母碟的考試紀錄、還原快速鍵鎖定、關閉自動更新、網路設定解除綁定網卡、清空 `machine-id`、補上 UEFI 備援開機檔，然後關機。
+**之後不要再開機進入母碟**（會重新產生 `machine-id`；要修改母碟就改完再重跑一次）。
 
-> 考試機需有網路以安裝系統依賴（走 apt/dnf/pacman）。
+用 Clonezilla 擷取整顆硬碟（savedisk）。還原到比母碟小的硬碟時，進階選項選 `-icds` 與 `-k1`。
+整間教室可用 Clonezilla Lite Server 群播同時還原。
+
+> 沒跑 `prepare-image.sh` 就複製的話，所有機器共用同一個 `machine-id`，DHCP 可能發同一個 IP 給整間教室 → 網路時通時斷。
+
+### 3. 複製機檢查（每台開機後）
+```bash
+~/BYOD/Scripts/check-exam.sh
+```
+檢查考試程式、g++、新酷音、IP 與 judge 連線；最後印出的「機器 ID / IP」各台不可重複。
+
+更新考試程式：在母碟（或單台）`git pull && ./Scripts/fetch-release.sh`（已是最新版就不會重新下載），母碟更新後須重跑步驟 2。
+每次推到 main，`.github/workflows/release-linux.yml` 會自動更新 Release `linux-latest`。
+
 > CEF 在 Linux 以免 root 的 `NoSandbox` 執行；Wayland 下無法硬鎖 Alt+Tab（見上方強度表）。
 
 ### 除錯
@@ -113,6 +134,12 @@ dotnet test  tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj   # 邏�
 - **監考人員離開**：`Ctrl + Alt + Shift + Q`（存檔、導出日誌後關閉）。
 - 其他關閉方式會被攔截，維持 Kiosk 封閉狀態。
 - 每場考試輸出於 `exams/<類別>_<日期時間>/`：`events.jsonl`/`events.json`（紀錄）與 `files/`（各分頁）。
+
+## 繳交與事後比對
+
+OOP 場「結束並退出」後，學生用桌面「交作業（Moodle）」圖示上傳 `Desktop/OOP&DS_<日期>/`。
+Chrome 由 `/etc/opt/chrome/policies/managed/byod-moodle.json` 鎖定只能開 Moodle、關閉即清除登入狀態。
+每個繳交檔案的 SHA-256 記在 `events.json`（「繳交檔案 …」），老師可對 Moodle 收到的檔案跑 `sha256sum` 比對，察覺退出後是否被修改。
 
 ## 白名單網域
 

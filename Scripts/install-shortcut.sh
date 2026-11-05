@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 #
-# 在本機安裝兩個桌面捷徑（每台機器跑一次即可）：
+# 在本機安裝桌面捷徑（每台機器跑一次即可）：
 #   - 程式設計          → judge 網站
 #   - OOP & DS          → 題目 PDF（BYOD_MODE=pdf）
+#   - 交作業（Moodle）  → Chrome 開 Moodle（已安裝 Chrome 時）
 # 依「這個專案資料夾的實際位置」產生，並設定執行權限與信任，
 # 同時放到桌面與應用程式清單（Activities 可搜尋）。
 #
@@ -52,11 +53,32 @@ install_pair() {
 install_pair "EXAM-程式設計.desktop"      "程式設計"        "./run.sh"
 install_pair "EXAM-OOP資料結構.desktop"   "OOP & DS"        "BYOD_MODE=pdf ./run.sh"
 
+# 交作業：Chrome 開 Moodle（政策已鎖定只能開 Moodle，見 setup-chrome.sh）。
+# --password-store=basic：不使用 GNOME 鑰匙圈，避免第一次開啟跳出「設定鑰匙圈密碼」視窗
+if command -v google-chrome >/dev/null 2>&1; then
+    MOODLE_URL="https://${BYOD_MOODLE_HOST:-elearningv4.nuk.edu.tw}/"
+    for target in "$DESKTOP_DIR/EXAM-交作業.desktop" "$APPS_DIR/EXAM-交作業.desktop"; do
+        cat > "$target" <<EOF
+[Desktop Entry]
+Type=Application
+Name=交作業（Moodle）
+Comment=上傳考試檔案到 Moodle
+Exec=google-chrome --password-store=basic --no-first-run --no-default-browser-check $MOODLE_URL
+Terminal=false
+Icon=google-chrome
+Categories=Education;
+EOF
+        chmod +x "$target"
+        gio set "$target" metadata::trusted true 2>/dev/null || true
+    done
+fi
+
 update-desktop-database "$APPS_DIR" 2>/dev/null || true
 
-echo "完成。已在桌面建立兩個圖示："
+echo "完成。已在桌面建立圖示："
 echo "  - 程式設計       （judge 網站）"
 echo "  - OOP & DS       （題目 PDF）"
+echo "  - 交作業（Moodle）（已安裝 Chrome 時）"
 echo ""
 echo "若圖示顯示未信任，右鍵 → 允許執行；或按 Super 搜尋名稱開啟。"
 echo "PDF 模式需在專案根目錄的 pdf-id.txt 填入 Google Drive 檔案 ID。"

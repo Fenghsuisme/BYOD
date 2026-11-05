@@ -46,7 +46,8 @@ if command -v apt-get >/dev/null 2>&1; then
         echo "全部已安裝，略過。"
         exit 0
     fi
-    apt-get update
+    # Lock::Timeout：剛開機時系統自動更新常佔住 apt 鎖，等它最多 10 分鐘而非直接失敗
+    apt-get -o DPkg::Lock::Timeout=600 update
 
     TO_INSTALL=()
     for entry in "${MISSING[@]}"; do
@@ -66,7 +67,7 @@ if command -v apt-get >/dev/null 2>&1; then
     done
 
     echo "將安裝：${TO_INSTALL[*]}"
-    apt-get install -y "${TO_INSTALL[@]}"
+    apt-get -o DPkg::Lock::Timeout=600 install -y "${TO_INSTALL[@]}"
 elif command -v dnf >/dev/null 2>&1; then
     echo "偵測到 dnf（Fedora/RHEL）"
     dnf install -y \

@@ -10,9 +10,10 @@ on:
 permissions:
   contents: write
 
+# 不取消進行中的上傳（取消在上傳一半會讓考試機抓不到檔案）；連續 push 時排隊依序跑
 concurrency:
   group: release-linux
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -46,11 +47,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 先刪舊的再建新的，讓 tag 指向這次的 commit；下載網址固定不變
-          gh release delete linux-latest --cleanup-tag --yes || true
-          # BUILD_COMMIT 單獨上傳：考試機先比對它，已是最新就不重下（不走 API，避免整間教室撞到速率限制）
+          # 不刪除 Release（刪掉到重建之間考試機會 404），而是在既有 Release 上增補檔案。
+          # 順序：帶版本號的成品 → 固定檔名成品（舊版腳本用）→ BUILD_COMMIT 最後上傳。
+          # 考試機先讀 BUILD_COMMIT 再抓對應版本號的檔案，因此永遠不會抓到上傳到一半的成品。
+          gh release view linux-latest >/dev/null 2>&1 || \
+            gh release create linux-latest --target "$GITHUB_SHA" \
+              --title "Linux x64（最新）" \
+              --notes "自動建置。考試機由 Scripts/setup-exam.sh / fetch-release.sh 下載使用。"
+          cp byod-linux-x64.tar.gz "byod-linux-x64-$GITHUB_SHA.tar.gz"
           cp publish/BUILD_COMMIT BUILD_COMMIT
-          gh release create linux-latest byod-linux-x64.tar.gz BUILD_COMMIT \
-            --target "$GITHUB_SHA" \
-            --title "Linux x64（最新）" \
-            --notes "自動建置自 ${GITHUB_SHA}。考試機由 Scripts/setup-exam.sh 下載使用。"
+          gh release upload linux-latest "byod-linux-x64-$GITHUB_SHA.tar.gz" --clobber
+          gh release upload linux-latest byod-linux-x64.tar.gz --clobber
+          gh release upload linux-latest BUILD_COMMIT --clobber
+          gh release edit linux-latest --notes "自動建置自 ${GITHUB_SHA}。考試機由 Scripts/setup-exam.sh / fetch-release.sh 下載使用。"
+          # 帶版本號的成品只留最新 3 個（較舊的不會再有人下載）
+          gh release view linux-latest --json assets \
+            -q '[.assets[] | select(.name | test("^byod-linux-x64-[0-9a-f]{40}\\.tar\\.gz$"))] | sort_by(.createdAt) | reverse | .[3:][] | .name' \
+            | while read -r old; do gh release delete-asset linux-latest "$old" --yes; done

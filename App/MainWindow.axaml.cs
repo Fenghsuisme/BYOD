@@ -548,6 +548,7 @@ public partial class MainWindow : Window
             try { await SaveAllFilesAsync(filesJson, _logCodeFolder); } catch { }
             if (_oopMode)
                 try { await EditorBridge.DoSaveToDesktop(filesJson, ExamCategory); } catch { }
+            try { RecordFileHashes(filesJson); } catch { }
             try { await ExportLogsAsync(exit ? "防弊瀏覽器正常關閉。" : "已儲存作答（未關閉程式）。"); } catch { }
             Console.WriteLine($"[BYOD] 已繳交至：{_sessionFolder}，程式碼備份：{_logCodeFolder}");
         }
@@ -561,6 +562,28 @@ public partial class MainWindow : Window
             ? $"作答已儲存（{DateTime.Now:HH:mm:ss}），請直接關機。"
             : "儲存失敗，請通知監考人員。";
         _ending = false;
+    }
+
+    /// <summary>
+    /// 將繳交時每個檔案的 SHA-256 記入事件日誌。退出後學生改了桌面檔案再上傳 Moodle，
+    /// 老師以 sha256sum 比對收到的檔案即可察覺。檔名與 DoSaveToDesktop 寫出的相對路徑一致。
+    /// </summary>
+    private void RecordFileHashes(string? filesJson)
+    {
+        using var doc = JsonDocument.Parse(filesJson ?? "[]");
+        var index = 0;
+        foreach (var el in doc.RootElement.EnumerateArray())
+        {
+            var name    = el.TryGetProperty("name",    out var n) ? n.GetString() ?? "" : "";
+            var content = el.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "";
+            if (string.IsNullOrEmpty(name)) continue;
+
+            var relPath = EditorBridge.SanitizeRelativePath(name, ++index);
+            // File.WriteAllTextAsync 預設寫 UTF-8（無 BOM），雜湊與磁碟上的檔案相同
+            var hash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content))).ToLowerInvariant();
+            _detector.Record(CheatingEventType.Info, $"繳交檔案 {relPath}", $"sha256={hash}");
+        }
     }
 
     /// <summary>

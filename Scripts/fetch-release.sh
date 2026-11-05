@@ -18,8 +18,9 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 1
 fi
 
-# 連線逾時 + 自動重試：網路不穩時不會無限期卡住
-CURL=(curl -fL --connect-timeout 20 --retry 3 --retry-delay 3)
+# 連線逾時 + 自動重試；--speed-limit/--speed-time：連上後若 60 秒內平均低於 1 KB/s 視為卡死，中止重試
+# （只有 --connect-timeout 的話，傳到一半停住會永遠掛著）
+CURL=(curl -fL --connect-timeout 20 --speed-limit 1024 --speed-time 60 --retry 3 --retry-delay 3)
 
 remote_commit="$("${CURL[@]}" -sS "$BASE_URL/BUILD_COMMIT" | tr -d '[:space:]')" || remote_commit=""
 local_commit="$(tr -d '[:space:]' 2>/dev/null < "$DIST/BUILD_COMMIT" || true)"
@@ -31,8 +32,26 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# 優先抓帶版本號的檔案：CI 上傳新版時不會覆蓋它，下載到一半也不會被換掉
+if [[ -n "$remote_commit" ]]; then
+    ASSET="byod-linux-x64-$remote_commit.tar.gz"
+else
+    ASSET="byod-linux-x64.tar.gz"
+fi
+
 echo "    下載考試程式（約 200 MB）…"
-"${CURL[@]}" --progress-bar "$BASE_URL/byod-linux-x64.tar.gz" -o "$TMP/byod.tar.gz"
+# 中斷時以 -C - 從斷點續傳，最多 5 次
+for attempt in 1 2 3 4 5; do
+    if "${CURL[@]}" -C - --progress-bar "$BASE_URL/$ASSET" -o "$TMP/byod.tar.gz"; then
+        break
+    fi
+    if [[ $attempt -eq 5 ]]; then
+        echo "    下載失敗（已重試 5 次），請確認網路後重跑本腳本。" >&2
+        exit 1
+    fi
+    echo "    下載中斷，10 秒後續傳（第 $((attempt + 1)) 次）…" >&2
+    sleep 10
+done
 
 echo "    解壓中…"
 mkdir -p "$TMP/dist"
