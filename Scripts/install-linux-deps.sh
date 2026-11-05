@@ -29,6 +29,9 @@ if command -v apt-get >/dev/null 2>&1; then
         "libasound2t64|libasound2"
         "libglib2.0-0t64|libglib2.0-0" "libgtk-3-0t64|libgtk-3-0"
         "fonts-liberation"
+        # .NET 執行期需要 ICU（語系 / 文字處理）。22.04 / 24.04 會被其他套件順便帶進來，
+        # 26.04 起不會，缺了程式一啟動就崩潰（Couldn't find a valid ICU package）
+        "libicu78|libicu77|libicu76|libicu74|libicu72|libicu70"
     )
 
     # 已裝的先略過（Ubuntu 桌面版幾乎都內建），全部都有就不必 apt-get update
@@ -81,7 +84,8 @@ elif command -v dnf >/dev/null 2>&1; then
         pango cairo \
         alsa-lib \
         glib2 gtk3 \
-        liberation-fonts
+        liberation-fonts \
+        libicu
 elif command -v pacman >/dev/null 2>&1; then
     echo "偵測到 pacman（Arch）"
     pacman -Sy --noconfirm \
@@ -95,7 +99,8 @@ elif command -v pacman >/dev/null 2>&1; then
         pango cairo \
         alsa-lib \
         glib2 gtk3 \
-        ttf-liberation
+        ttf-liberation \
+        icu
 else
     echo "找不到支援的套件管理員（apt/dnf/pacman）。請手動安裝 Chromium 執行期依賴。" >&2
     exit 1
