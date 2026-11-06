@@ -28,7 +28,7 @@
                         <StackPanel x:Name="ConfirmPanel" IsVisible="False"
                                     Orientation="Horizontal" Spacing="8">
                             <TextBlock x:Name="ConfirmDetailText"
-                                       Text="將儲存作答（不會關閉畫面），確定？"
+                                       Text="將儲存作答並關閉程式，確定？"
                                        Foreground="#FFD580"
                                        VerticalAlignment="Center" />
                             <Button x:Name="ConfirmYesButton"
@@ -43,7 +43,7 @@
                                     Foreground="White" />
                         </StackPanel>
                         <Button x:Name="EndExamButton"
-                                Content="結束考試"
+                                Content="結束並退出"
                                 Padding="14,3"
                                 Background="#A1260D"
                                 Foreground="White"

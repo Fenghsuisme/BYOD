@@ -110,7 +110,7 @@ cd ~/BYOD
 > CEF 在 Linux 以免 root 的 `NoSandbox` 執行；Wayland 下無法硬鎖 Alt+Tab（見上方強度表）。
 
 ### 除錯
-- 一般啟動：`./run.sh`（離開：`Ctrl+Alt+Shift+Q` 或右上「結束考試」）
+- 一般啟動：`./run.sh`（離開：`Ctrl+Alt+Shift+Q` 或右上「結束並退出」）
 - 視窗模式（有邊框方便觀察）：`BYOD_WINDOWED=1 ./run.sh`
 - 終端輸出會同時寫入 `logs/terminal_<時間>.log`
 
@@ -142,7 +142,7 @@ dotnet test  tests/ByodKioskBrowser.Tests/ByodKioskBrowser.Tests.csproj   # 邏�
 
 ## 操作說明
 
-- **結束考試（程式設計）**：右上「結束考試」→ 頂部列「確定」→ 存所有分頁至本場資料夾與 `logs/程式設計_<時間>/`，**不關閉畫面**，學生直接關機即可（可重按覆蓋為最新版）。
+- **結束考試（程式設計）**：右上「結束並退出」→ 頂部列「確定」→ 存所有分頁至本場資料夾與 `logs/程式設計_<時間>/`，存完**自動關閉程式**。
 - **結束並退出（OOP）**：右上「結束並退出」→ 頂部列「確定」→ 另存至桌面 `OOP&DS_<日期>/` 後關閉程式。
 - **監考人員離開**：`Ctrl + Alt + Shift + Q`（存檔、導出日誌後關閉）。
 - 其他關閉方式會被攔截，維持 Kiosk 封閉狀態。

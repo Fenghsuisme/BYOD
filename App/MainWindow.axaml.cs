@@ -93,7 +93,7 @@ public partial class MainWindow : Window
 
     // 本次考試工作階段資料夾（每次啟動新建）；檔案與紀錄都存在此
     private readonly string _sessionFolder;
-    // 程式碼備份：<log 資料夾>/<類別>_<本場開始時間>/（judge 模式按「結束考試」只存檔不關閉）
+    // 程式碼備份：<log 資料夾>/<類別>_<本場開始時間>/
     private readonly string _logCodeFolder;
     private readonly string _liveLogPath;
     private readonly string _exportLogPath;
@@ -162,7 +162,7 @@ public partial class MainWindow : Window
         // 結束考試按鈕與確認列。確認放在頂部狀態列：置中遮罩會被 CEF 原生視窗蓋住（Linux 上看不到也點不到）
         EndExamButton.Click += (_, _) => ShowConfirm(true);
         ConfirmNoButton.Click += (_, _) => ShowConfirm(false);
-        ConfirmYesButton.Click += async (_, _) => await SubmitAsync(exit: _oopMode, "學生按下結束考試，開始繳交。");
+        ConfirmYesButton.Click += async (_, _) => await SubmitAsync(exit: true, "學生按下結束考試，開始繳交。");
 
         // 判題站導覽鍵（作用於左側瀏覽器）
         BackButton.Click += (_, _) => { if (_judgeBrowser?.CanGoBack == true) _judgeBrowser.GoBack(); };
@@ -554,8 +554,8 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 繳交：儲存所有分頁至本場資料夾與 log 資料夾（OOP 另存桌面）並導出紀錄。
-    /// exit = false（judge 模式）：存完維持畫面，學生直接關機；可再按一次覆蓋為最新版本。
-    /// exit = true（OOP 模式 / 監考熱鍵）：存完立即結束程式。
+    /// exit = true（結束考試按鈕 / 監考熱鍵，兩種模式皆是）：存完立即結束程式。
+    /// exit = false：存完維持畫面（保留供日後自動存檔等用途）。
     /// </summary>
     private async Task SubmitAsync(bool exit, string reason)
     {
