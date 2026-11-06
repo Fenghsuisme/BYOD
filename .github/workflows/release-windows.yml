@@ -68,19 +68,37 @@ jobs:
       - name: 實測：啟動考試程式 30 秒
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD 'publish\ByodKioskBrowser.exe'
-          $app = Start-Process -FilePath $exe -PassThru
-          Start-Sleep -Seconds 30
-          $children = @(Get-Process | Where-Object { $_.Id -ne $app.Id -and $_.Path -like "$PWD\publish\*" })
-          $alive = -not $app.HasExited
-          Write-Output "::notice::考試程式存活=$alive；CEF 子行程數=$($children.Count)"
-          Get-Content publish\logs\cef.log -Tail 20 -ErrorAction SilentlyContinue
-          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
-          $children | Stop-Process -Force -ErrorAction SilentlyContinue
+          $ErrorActionPreference = 'Continue'
+          $dir = Join-Path $PWD 'publish'
+          $exe = Join-Path $dir 'ByodKioskBrowser.exe'
+          $alive = $false; $count = 0
+          try {
+            $app = Start-Process -FilePath $exe -WorkingDirectory $dir -PassThru `
+              -RedirectStandardOutput app-out.txt -RedirectStandardError app-err.txt
+            Start-Sleep -Seconds 30
+            $alive = -not $app.HasExited
+            $children = @(Get-CimInstance Win32_Process | Where-Object {
+              $_.ProcessId -ne $app.Id -and $_.ExecutablePath -and $_.ExecutablePath.StartsWith($dir) })
+            $count = $children.Count
+            if (-not $alive) { Write-Output "::notice::結束代碼=$($app.ExitCode)" }
+            Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+            $children | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          } catch {
+            Write-Output "::error::啟動測試例外：$($_.Exception.Message)"
+          }
+          Write-Output "::notice::考試程式存活=$alive；CEF 子行程數=$count"
+          # 輸出轉成註記，未登入也看得到
+          foreach ($f in 'app-out.txt', 'app-err.txt', 'publish\logs\cef.log') {
+            if (Test-Path $f) {
+              $tail = (Get-Content $f -Tail 15) -join ' | '
+              if ($tail) { Write-Output "::notice::$f：$($tail.Substring(0, [Math]::Min(900, $tail.Length)))" }
+            }
+          }
           Start-Sleep -Seconds 3
           Remove-Item -Recurse -Force publish\logs, publish\exams -ErrorAction SilentlyContinue
           if (-not $alive) { Write-Output '::error::考試程式在 30 秒內結束（崩潰）'; exit 1 }
-          if ($children.Count -lt 1) { Write-Output '::error::CEF 子行程沒有啟動'; exit 1 }
+          if ($count -lt 1) { Write-Output '::error::CEF 子行程沒有啟動'; exit 1 }
+          exit 0
 
       - name: Package
         run: |
