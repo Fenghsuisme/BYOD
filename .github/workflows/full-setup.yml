@@ -29,7 +29,7 @@ jobs:
           # 桌面版內建、容器沒有的：GNOME 各項設定的 schema、dconf、sudo、xdg-user-dirs、虛擬螢幕
           apt-get install -y sudo wget ca-certificates git dbus dbus-x11 dconf-gsettings-backend dconf-cli \
             gsettings-desktop-schemas gnome-shell gnome-settings-daemon gnome-shell-extension-ubuntu-dock \
-            xdg-user-dirs libglib2.0-bin xvfb xauth procps
+            xdg-user-dirs libglib2.0-bin xvfb xauth procps python3
           useradd -m -s /bin/bash exam
           echo "exam ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/exam
           chmod 440 /etc/sudoers.d/exam
@@ -49,7 +49,7 @@ jobs:
           step "setup-exam.sh"
           ./Scripts/setup-exam.sh 2>&1 | tee ~/setup.log
           end
-          skipped="$(grep "略過" ~/setup.log | sed 's/^ *//' | paste -sd';' - || true)"
+          skipped="$(grep "略過（此版本" ~/setup.log | sed 's/^ *//' | paste -sd';' - || true)"
           echo "::notice::被略過的 GNOME 設定：${skipped:-無}"
 
           step "Chrome 政策：只能開 Moodle"
@@ -79,6 +79,20 @@ jobs:
             echo "::warning::測試主機連不到 Moodle（HTTP ${code:-無回應}），無法驗證 Moodle 放行，須實機確認"
           fi
           end
+
+          if [[ " ${FAILS[*]} " == *" policy-moodle "* ]]; then
+            step "找出擋到 Moodle 的政策項目（逐項拿掉重試）"
+            sudo cp "$POLICY" /tmp/policy-full.json
+            for key in $(python3 -c 'import json;print(" ".join(json.load(open("/tmp/policy-full.json"))))'); do
+              python3 -c 'import json,sys;d=json.load(open("/tmp/policy-full.json"));d.pop(sys.argv[1]);json.dump(d,open("/tmp/p.json","w"))' "$key"
+              sudo cp /tmp/p.json "$POLICY"
+              r="$(timeout 90 "${CHROME[@]}" "$LOGIN" 2>/dev/null || true)"
+              echo "::notice::拿掉 $key → Moodle 登入表單=$(has "$r" logintoken)"
+            done
+            sudo cp /tmp/policy-full.json "$POLICY"
+            echo "::notice::有政策時 Moodle 頁面開頭：$(head -c 300 <<< "$moodle" | tr '\n' ' ')"
+            end
+          fi
 
           step "桌面圖示"
           ls -l ~/Desktop/EXAM-*.desktop
