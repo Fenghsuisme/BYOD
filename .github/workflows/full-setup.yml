@@ -1,0 +1,109 @@
+name: Full setup (Ubuntu 26.04)
+
+# 以乾淨的 Ubuntu 26.04 + GNOME 套件，照母碟流程完整跑一次：
+#   setup-exam.sh → Chrome 政策是否生效 → run.sh 啟動考試程式（含快速鍵鎖定 / 還原）
+#   → check-exam.sh → prepare-image.sh
+# 以考試帳號（非 root、可 sudo）在 DBus 工作階段中執行，盡量貼近實機。
+# 驗證不到：真實 GNOME 畫面、Wayland、新酷音選字、Clonezilla。
+on:
+  workflow_run:
+    workflows: ["Release (Linux x64)"]
+    types: [completed]
+  workflow_dispatch:
+
+jobs:
+  full-setup:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:26.04
+      options: --shm-size=2g
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 模擬乾淨的考試機（GNOME 設定 schema + 考試帳號）
+        run: |
+          apt-get update
+          # 桌面版內建、容器沒有的：GNOME 各項設定的 schema、dconf、sudo、xdg-user-dirs、虛擬螢幕
+          apt-get install -y sudo wget ca-certificates git dbus dbus-x11 dconf-gsettings-backend dconf-cli \
+            gsettings-desktop-schemas gnome-shell gnome-settings-daemon gnome-shell-extension-ubuntu-dock \
+            xdg-user-dirs libglib2.0-bin xvfb xauth procps
+          useradd -m -s /bin/bash exam
+          echo "exam ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/exam
+          chmod 440 /etc/sudoers.d/exam
+          cp -r "$GITHUB_WORKSPACE" /home/exam/BYOD
+          chown -R exam:exam /home/exam/BYOD
+          echo "uid=1000 machine-id=$(cat /etc/machine-id 2>/dev/null || echo none)"
+
+      - name: 執行全流程（以考試帳號）
+        run: |
+          cat > /home/exam/flow.sh <<'FLOW'
+          set -euo pipefail
+          cd ~/BYOD
+          step() { echo ""; echo "::group::$1"; }
+          end()  { echo "::endgroup::"; }
+
+          step "setup-exam.sh"
+          ./Scripts/setup-exam.sh 2>&1 | tee ~/setup.log
+          end
+          echo "== 本版 GNOME 沒有、被略過的設定 =="
+          grep "略過" ~/setup.log || echo "（無）"
+
+          step "Chrome 政策：只能開 Moodle"
+          test -f /etc/opt/chrome/policies/managed/byod-moodle.json
+          CHROME=(google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom)
+          moodle="$(timeout 90 "${CHROME[@]}" https://elearningv4.nuk.edu.tw/login/index.php 2>/dev/null || true)"
+          google="$(timeout 90 "${CHROME[@]}" https://www.google.com/ 2>/dev/null || true)"
+          if ! grep -q 'logintoken' <<< "$moodle"; then
+            echo "::error::Chrome 打不開 Moodle 登入頁"; exit 1
+          fi
+          if grep -q 'name="q"' <<< "$google"; then
+            echo "::error::Chrome 政策沒生效：google.com 打得開"; exit 1
+          fi
+          echo "Moodle 可開、google.com 已封鎖"
+          end
+
+          step "桌面圖示"
+          ls -l ~/Desktop/EXAM-*.desktop
+          test -f ~/Desktop/EXAM-交作業.desktop
+          end
+
+          step "run.sh 啟動考試程式 30 秒"
+          Xvfb :99 -screen 0 1600x900x24 & XVFB=$!
+          export DISPLAY=:99
+          sleep 2
+          ./run.sh > ~/run.log 2>&1 & RUN=$!
+          sleep 30
+          locked="$(gsettings get org.gnome.mutter overlay-key)"
+          alive=no; pgrep -f dist/ByodKioskBrowser >/dev/null && alive=yes
+          # 模擬監考強制關閉 / 當機：kill run.sh，檢查快速鍵是否還原
+          pkill -TERM -f dist/ByodKioskBrowser || true
+          wait "$RUN" || true
+          restored="$(gsettings get org.gnome.mutter overlay-key)"
+          kill "$XVFB" || true
+          echo "執行中 Super 鍵設定：$locked；結束後：$restored；程式存活：$alive"
+          tail -n 30 ~/run.log
+          [ "$alive" = yes ] || { echo "::error::考試程式沒有持續執行"; exit 1; }
+          [ "$locked" = "''" ] || { echo "::error::執行中 Super 鍵沒有被鎖定"; exit 1; }
+          [ "$restored" != "''" ] || { echo "::error::結束後 Super 鍵沒有還原"; exit 1; }
+          if [ -f ~/.local/state/byod-kiosk/desktop-lock.state ]; then
+            echo "::error::結束後殘留快速鍵鎖定狀態檔"; exit 1
+          fi
+          end
+
+          step "check-exam.sh（容器內沒有 ibus-daemon，該項失敗屬預期）"
+          ./Scripts/check-exam.sh || true
+          end
+
+          step "prepare-image.sh"
+          ./Scripts/prepare-image.sh
+          test ! -s /etc/machine-id
+          test ! -e ~/.config/google-chrome
+          test -f /etc/apt/apt.conf.d/20auto-upgrades
+          echo "machine-id 已清空、Chrome 資料已清除、自動更新已關閉"
+          end
+          FLOW
+          chown exam:exam /home/exam/flow.sh
+          sudo -u exam -H env HOME=/home/exam dbus-run-session -- bash /home/exam/flow.sh
