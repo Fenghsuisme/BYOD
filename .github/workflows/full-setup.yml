@@ -42,27 +42,42 @@ jobs:
           cat > /home/exam/flow.sh <<'FLOW'
           set -euo pipefail
           cd ~/BYOD
+          FAILS=()
           step() { echo ""; echo "::group::$1"; }
           end()  { echo "::endgroup::"; }
 
           step "setup-exam.sh"
           ./Scripts/setup-exam.sh 2>&1 | tee ~/setup.log
           end
-          echo "== 本版 GNOME 沒有、被略過的設定 =="
-          grep "略過" ~/setup.log || echo "（無）"
+          skipped="$(grep "略過" ~/setup.log | sed 's/^ *//' | paste -sd';' - || true)"
+          echo "::notice::被略過的 GNOME 設定：${skipped:-無}"
 
           step "Chrome 政策：只能開 Moodle"
           test -f /etc/opt/chrome/policies/managed/byod-moodle.json
+          POLICY=/etc/opt/chrome/policies/managed/byod-moodle.json
           CHROME=(google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=10000 --dump-dom)
-          moodle="$(timeout 90 "${CHROME[@]}" https://elearningv4.nuk.edu.tw/login/index.php 2>/dev/null || true)"
+          LOGIN=https://elearningv4.nuk.edu.tw/login/index.php
+          # 先確認這台測試主機（在美國）連不連得到學校網站，以區分「網路到不了」與「政策擋錯」
+          code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 15 --max-time 30 "$LOGIN" || true)"
+          echo "::notice::curl 直連 Moodle：HTTP ${code:-無回應}"
+          moodle="$(timeout 90 "${CHROME[@]}" "$LOGIN" 2>/dev/null || true)"
           google="$(timeout 90 "${CHROME[@]}" https://www.google.com/ 2>/dev/null || true)"
-          if ! grep -q 'logintoken' <<< "$moodle"; then
-            echo "::error::Chrome 打不開 Moodle 登入頁"; exit 1
+          # 對照組：暫時拿掉政策，Chrome 應該兩個都打得開
+          sudo mv "$POLICY" /tmp/policy.json
+          google_free="$(timeout 90 "${CHROME[@]}" https://www.google.com/ 2>/dev/null || true)"
+          moodle_free="$(timeout 90 "${CHROME[@]}" "$LOGIN" 2>/dev/null || true)"
+          sudo mv /tmp/policy.json "$POLICY"
+          has() { grep -q "$2" <<< "$1" && echo yes || echo no; }
+          echo "::notice::有政策：Moodle 登入表單=$(has "$moodle" logintoken)  google 搜尋框=$(has "$google" 'name="q"')"
+          echo "::notice::無政策：Moodle 登入表單=$(has "$moodle_free" logintoken)  google 搜尋框=$(has "$google_free" 'name="q"')"
+          echo "有政策時 Moodle 頁面開頭："; head -c 600 <<< "$moodle"; echo
+          [ "$(has "$google_free" 'name="q"')" = yes ] || { echo "::error::Chrome 本身無法開網頁（測試環境問題）"; FAILS+=("chrome-base"); }
+          [ "$(has "$google" 'name="q"')" = no ] || { echo "::error::政策沒生效：google.com 打得開"; FAILS+=("policy-block"); }
+          if [ "$(has "$moodle_free" logintoken)" = yes ]; then
+            [ "$(has "$moodle" logintoken)" = yes ] || { echo "::error::政策擋到 Moodle"; FAILS+=("policy-moodle"); }
+          else
+            echo "::warning::測試主機連不到 Moodle（HTTP ${code:-無回應}），無法驗證 Moodle 放行，須實機確認"
           fi
-          if grep -q 'name="q"' <<< "$google"; then
-            echo "::error::Chrome 政策沒生效：google.com 打得開"; exit 1
-          fi
-          echo "Moodle 可開、google.com 已封鎖"
           end
 
           step "桌面圖示"
@@ -83,13 +98,13 @@ jobs:
           wait "$RUN" || true
           restored="$(gsettings get org.gnome.mutter overlay-key)"
           kill "$XVFB" || true
-          echo "執行中 Super 鍵設定：$locked；結束後：$restored；程式存活：$alive"
+          echo "::notice::執行中 Super 鍵設定：$locked；結束後：$restored；程式存活：$alive"
           tail -n 30 ~/run.log
-          [ "$alive" = yes ] || { echo "::error::考試程式沒有持續執行"; exit 1; }
-          [ "$locked" = "''" ] || { echo "::error::執行中 Super 鍵沒有被鎖定"; exit 1; }
-          [ "$restored" != "''" ] || { echo "::error::結束後 Super 鍵沒有還原"; exit 1; }
+          [ "$alive" = yes ] || { echo "::error::考試程式沒有持續執行"; FAILS+=("app"); }
+          [ "$locked" = "''" ] || { echo "::error::執行中 Super 鍵沒有被鎖定"; FAILS+=("lock"); }
+          [ "$restored" != "''" ] || { echo "::error::結束後 Super 鍵沒有還原"; FAILS+=("unlock"); }
           if [ -f ~/.local/state/byod-kiosk/desktop-lock.state ]; then
-            echo "::error::結束後殘留快速鍵鎖定狀態檔"; exit 1
+            echo "::error::結束後殘留快速鍵鎖定狀態檔"; FAILS+=("lock-state")
           fi
           end
 
@@ -104,6 +119,12 @@ jobs:
           test -f /etc/apt/apt.conf.d/20auto-upgrades
           echo "machine-id 已清空、Chrome 資料已清除、自動更新已關閉"
           end
+
+          echo ""
+          if [ ${#FAILS[@]} -gt 0 ]; then
+            echo "::error::未通過：${FAILS[*]}"; exit 1
+          fi
+          echo "全部通過"
           FLOW
           chown exam:exam /home/exam/flow.sh
           sudo -u exam -H env HOME=/home/exam dbus-run-session -- bash /home/exam/flow.sh
