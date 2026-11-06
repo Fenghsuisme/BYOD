@@ -23,6 +23,12 @@ internal static class Program
         // 即使異常結束也盡量清除快取
         AppDomain.CurrentDomain.ProcessExit += (_, _) => Cleanup();
 
+        // Linux 由 run.sh 清理上次被強制結束留下的暫存；Windows 直接執行 exe，改在啟動時清
+        if (OperatingSystem.IsWindows())
+        {
+            DeleteStaleTempFiles();
+        }
+
         try
         {
             BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
@@ -148,6 +154,28 @@ internal static class Program
         DeleteCacheDir();
     }
 
+    /// <summary>刪除上次異常結束留在 TEMP 的 CEF 快取、題目 PDF 與編譯暫存（與 run.sh 的 cleanup 相同）。</summary>
+    private static void DeleteStaleTempFiles()
+    {
+        var tmp = Path.GetTempPath();
+        foreach (var pattern in new[] { "ByodKiosk_*", "byod_run_*" })
+        {
+            foreach (var dir in SafeEnumerate(() => Directory.EnumerateDirectories(tmp, pattern)))
+            {
+                try { Directory.Delete(dir, recursive: true); } catch { /* 可能仍被使用中 */ }
+            }
+        }
+        foreach (var file in SafeEnumerate(() => Directory.EnumerateFiles(tmp, "byod_exam_*.pdf")))
+        {
+            try { File.Delete(file); } catch { }
+        }
+    }
+
+    private static IEnumerable<string> SafeEnumerate(Func<IEnumerable<string>> enumerate)
+    {
+        try { return enumerate().ToList(); } catch { return Array.Empty<string>(); }
+    }
+
     private static void DeleteCacheDir()
     {
         try
@@ -195,16 +223,44 @@ internal static class Program
         System.Diagnostics.Process.GetCurrentProcess().Kill();
     }
 
-    /// <summary>Linux：掃描 /proc 找出父行程為自己的子行程（CEF renderer / gpu / zygote 等）。</summary>
+    /// <summary>
+    /// 找出 CEF 子行程（renderer / gpu 等）。
+    /// Linux：掃描 /proc 找父行程為自己者。Windows：找執行檔位於本程式資料夾內的其他行程
+    /// （CEF 子行程未結束時會鎖住快取檔案，HardExit 刪不掉而留下殘留）。
+    /// </summary>
     private static List<int> ChildProcessIds()
     {
         var result = new List<int>();
+        var self = Environment.ProcessId;
+        if (OperatingSystem.IsWindows())
+        {
+            var baseDir = AppContext.BaseDirectory;
+            foreach (var process in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    if (process.Id != self &&
+                        process.MainModule?.FileName?.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase) == true)
+                    {
+                        result.Add(process.Id);
+                    }
+                }
+                catch
+                {
+                    // 其他使用者 / 系統行程無法讀取路徑
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+            return result;
+        }
         if (!OperatingSystem.IsLinux())
         {
             return result;
         }
 
-        var self = Environment.ProcessId;
         try
         {
             foreach (var dir in Directory.EnumerateDirectories("/proc"))

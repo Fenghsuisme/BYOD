@@ -1,0 +1,101 @@
+name: Release (Windows x64)
+
+# 每次推到 main 建好 Windows 考試程式（免安裝綠色資料夾），放到 Release「windows-latest」。
+# 內附免安裝 C/C++ 編譯器（w64devkit），考試機不需安裝任何東西、不需系統管理員權限。
+# 打包前先在 Windows 主機上實測：編譯器能編譯執行、考試程式能啟動並載入 Chromium。
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows
+  cancel-in-progress: false
+
+env:
+  W64DEVKIT_VERSION: "2.10.1"
+
+jobs:
+  release:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Fetch Monaco / pdf.js
+        run: |
+          ./Scripts/fetch-monaco.sh
+          ./Scripts/fetch-pdfjs.sh
+
+      - name: Publish (self-contained，考試機不需 .NET)
+        run: dotnet publish App/ByodKioskBrowser.App.csproj -c Release -r win-x64 --self-contained true -o publish
+
+      - name: 附上 C/C++ 編譯器（w64devkit）與啟動檔
+        run: |
+          curl -fsSL --retry 3 -o w64devkit.7z.exe \
+            "https://github.com/skeeto/w64devkit/releases/download/v$W64DEVKIT_VERSION/w64devkit-x64-$W64DEVKIT_VERSION.7z.exe"
+          7z x -y -opublish w64devkit.7z.exe > /dev/null
+          test -x publish/w64devkit/bin/g++.exe
+          cp Scripts/windows/*.cmd publish/
+          cp pdf-id.txt publish/
+
+      - name: Trim
+        run: |
+          # CEF 介面語系只留英文與繁中；除錯符號檔用不到
+          find publish -path '*/locales/*.pak' ! -name 'en-US.pak' ! -name 'zh-TW.pak' -delete
+          find publish -name '*.pdb' -delete
+          echo "$GITHUB_SHA" > publish/BUILD_COMMIT
+
+      - name: 實測：內附編譯器
+        run: |
+          printf '#include <iostream>\nint main(){std::cout<<"ok";}\n' > t.cpp
+          publish/w64devkit/bin/g++.exe -O2 -std=c++17 -static t.cpp -o t.exe
+          test "$(./t.exe)" = ok
+          printf '#include <stdio.h>\n#include <math.h>\nint main(){printf("%%.0f",sqrt(16.0));}\n' > t.c
+          publish/w64devkit/bin/gcc.exe -O2 -std=c11 -static t.c -o tc.exe -lm
+          test "$(./tc.exe)" = 4
+          echo "::notice::內附 g++ / gcc 可編譯執行（$(publish/w64devkit/bin/g++.exe --version | head -n1)）"
+
+      - name: 實測：啟動考試程式 30 秒
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'publish\ByodKioskBrowser.exe'
+          $app = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 30
+          $children = @(Get-Process | Where-Object { $_.Id -ne $app.Id -and $_.Path -like "$PWD\publish\*" })
+          $alive = -not $app.HasExited
+          Write-Output "::notice::考試程式存活=$alive；CEF 子行程數=$($children.Count)"
+          Get-Content publish\logs\cef.log -Tail 20 -ErrorAction SilentlyContinue
+          Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue
+          $children | Stop-Process -Force -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 3
+          Remove-Item -Recurse -Force publish\logs, publish\exams -ErrorAction SilentlyContinue
+          if (-not $alive) { Write-Output '::error::考試程式在 30 秒內結束（崩潰）'; exit 1 }
+          if ($children.Count -lt 1) { Write-Output '::error::CEF 子行程沒有啟動'; exit 1 }
+
+      - name: Package
+        run: |
+          # 壓縮檔內含一層 BYOD-Exam 資料夾，解壓後不會把檔案灑滿目的地
+          mv publish BYOD-Exam
+          7z a -tzip -mx=7 byod-windows-x64.zip BYOD-Exam > /dev/null
+          ls -l byod-windows-x64.zip
+
+      - name: Upload to release windows-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view windows-latest >/dev/null 2>&1 || \
+            gh release create windows-latest --target "$GITHUB_SHA" \
+              --title "Windows x64（最新）" \
+              --notes "自動建置。下載 byod-windows-x64.zip 解壓即可使用。"
+          gh release upload windows-latest byod-windows-x64.zip --clobber
+          gh release edit windows-latest --notes "自動建置自 ${GITHUB_SHA}。下載 byod-windows-x64.zip，解壓後雙擊「程式設計.cmd」或「OOP資料結構.cmd」。"

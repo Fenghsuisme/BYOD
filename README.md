@@ -59,6 +59,19 @@ BYOD/
     └── fetch-monaco.sh                # 下載並佈署 Monaco
 ```
 
+## 部署：Windows（免安裝，建議）
+
+教室 Windows 電腦直接執行，不動系統、不需系統管理員權限、不需安裝任何東西。
+
+1. 從 Release [`windows-latest`](https://github.com/Fenghsuisme/BYOD/releases/tag/windows-latest) 下載 `byod-windows-x64.zip`（每次推到 main 由 `.github/workflows/release-windows.yml` 自動重建，打包前會在 Windows 上實測編譯器與啟動）。
+2. 解壓，得到 `BYOD-Exam/` 資料夾；OOP 場先編輯其中的 `pdf-id.txt`。
+3. 把 `BYOD-Exam/` 複製到每台電腦（桌面或任一可寫入的位置）。**經由 USB 隨身碟（exFAT / FAT32）複製**可去除「從網路下載」標記，避免每台都跳 SmartScreen 警告。
+4. 考試時雙擊 `程式設計.cmd` 或 `OOP資料結構.cmd`。
+
+- 內附免安裝 C/C++ 編譯器 `w64devkit/`，學生程式以 `-static` 連結。
+- 考試中於程式內攔截 Win 鍵、Alt+Tab、Alt+Esc、Ctrl+Esc、Ctrl+Shift+Esc、Alt+F4（低階鍵盤掛鉤，程式結束即失效、零殘留）；Ctrl+Alt+Del、Win+L 無法攔截，由失焦偵測記錄。
+- 考試紀錄在 `BYOD-Exam/exams/` 與 `BYOD-Exam/logs/`；教室若有還原卡，重開機前要先收走。
+
 ## 部署：考試環境碟（Linux）
 
 做法為「**一台母碟 → Clonezilla 複製到整間教室**」。目標為 x64 的 Linux（開發於 GNOME/Wayland 驗證），複製機可為不同型號。

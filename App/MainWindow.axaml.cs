@@ -89,6 +89,8 @@ public partial class MainWindow : Window
     // 診斷用：BYOD_WINDOWED=1 → 一般視窗模式（有邊框、不置頂），方便確認視窗能否顯示
     private readonly bool _windowed = Environment.GetEnvironmentVariable("BYOD_WINDOWED") == "1";
 
+    private WindowsKeyboardLock? _keyboardLock;
+
     // 本次考試工作階段資料夾（每次啟動新建）；檔案與紀錄都存在此
     private readonly string _sessionFolder;
     // 程式碼備份：<log 資料夾>/<類別>_<本場開始時間>/（judge 模式按「結束考試」只存檔不關閉）
@@ -246,6 +248,14 @@ public partial class MainWindow : Window
         {
             // GNOME Wayland 忽略 FullScreen；版面完成後以螢幕尺寸手動鋪滿
             Dispatcher.UIThread.Post(ApplyKioskSizeLinux, DispatcherPriority.Background);
+        }
+
+        // Windows 沒有 desktop-lock.sh（GNOME 設定），改在程式內攔截 Win 鍵 / Alt+Tab 等
+        if (!_windowed && OperatingSystem.IsWindows())
+        {
+            _keyboardLock = new WindowsKeyboardLock(key =>
+                Dispatcher.UIThread.Post(() => _detector.Record(CheatingEventType.BlockedShortcut, $"已攔截 {key}")));
+            Console.WriteLine($"[BYOD] Windows 鍵盤攔截：{(_keyboardLock.Install() ? "已啟用" : "安裝失敗")}");
         }
 
         // 診斷開關：定位崩潰發生在哪一步
@@ -440,10 +450,29 @@ public partial class MainWindow : Window
         _ime.SetCaret(origin.X + (int)(x * dpr), origin.Y + (int)(y * dpr), (int)(height * dpr));
     }
 
+    /// <summary>程式資料夾內 pdf-id.txt 的第一個非註解行（與 run.sh 的規則相同）。</summary>
+    private static string? ReadPdfIdFile()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "pdf-id.txt");
+            if (!File.Exists(path)) return null;
+            return File.ReadLines(path)
+                .Select(line => line.Trim())
+                .FirstOrDefault(line => line.Length > 0 && !line.StartsWith('#'));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     /// <summary>PDF 模式：背景由 Google Drive 下載題目 PDF，完成後設定快取路徑供 app://local/exam.pdf 提供。</summary>
     private void StartExamPdfDownload()
     {
+        // Linux 由 run.sh 讀 pdf-id.txt 後設 BYOD_PDF_ID；Windows 直接執行 exe，改在這裡讀
         var source = Environment.GetEnvironmentVariable("BYOD_PDF_ID");
+        if (string.IsNullOrWhiteSpace(source)) source = ReadPdfIdFile();
         if (string.IsNullOrWhiteSpace(source))
         {
             Console.WriteLine("[BYOD] 未設定題目 PDF 來源（請在專案根目錄的 pdf-id.txt 填入 Drive 資料夾/檔案連結）。");

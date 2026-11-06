@@ -124,7 +124,7 @@ public sealed class CodeRunnerService
             return new RunResult { Ok = false, Phase = "error", Message = $"不支援的語言：{language}（僅支援 C / C++）。" };
         }
 
-        var compiler = isC ? "gcc" : "g++";
+        var compiler = ResolveCompiler(isC ? "gcc" : "g++");
         var srcExts = isC
             ? new[] { ".c" }
             : new[] { ".cpp", ".cc", ".cxx", ".c++" };
@@ -186,16 +186,22 @@ public sealed class CodeRunnerService
             }
             // 互動模式：stdout 是管線時預設為全緩衝，printf("請輸入:") 的提示要到程式結束才出現。
             // 加入一個在 main 前執行的小檔，把 stdout / stdin 改為行緩衝：
-            // libc 只在「stdin 為行緩衝」時，讀取前自動 flush 所有行緩衝輸出（含不換行的提示）
+            // libc 只在「stdin 為行緩衝」時，讀取前自動 flush 所有行緩衝輸出（含不換行的提示）。
+            // Windows 的 C 執行階段不支援行緩衝（_IOLBF 等同全緩衝），改為 stdout 不緩衝。
             if (interactive)
             {
                 var linebufPath = Path.Combine(workDir, "__byod_linebuf" + (isC ? ".c" : ".cpp"));
+                var setup = OperatingSystem.IsWindows()
+                    ? "setvbuf(stdout, NULL, _IONBF, 0);"
+                    : "setvbuf(stdout, NULL, _IOLBF, 0); setvbuf(stdin, NULL, _IOLBF, 0);";
                 await File.WriteAllTextAsync(linebufPath,
                     "#include <stdio.h>\n" +
-                    "__attribute__((constructor)) static void byod_linebuf(void) { setvbuf(stdout, NULL, _IOLBF, 0); setvbuf(stdin, NULL, _IOLBF, 0); }\n");
+                    $"__attribute__((constructor)) static void byod_linebuf(void) {{ {setup} }}\n");
                 compileArgs.Add(linebufPath);
             }
             compileArgs.Add("-lm");
+            // Windows：靜態連結，學生程式不依賴 libstdc++ 等 DLL（考試機的 PATH 上沒有）
+            if (OperatingSystem.IsWindows()) compileArgs.Add("-static");
             Console.WriteLine($"[BYOD-run] 編譯：{compiler} {string.Join(' ', compileArgs)}");
             ProcessOutcome compile;
             try
@@ -210,7 +216,9 @@ public sealed class CodeRunnerService
                 {
                     Ok = false,
                     Phase = "error",
-                    Message = $"找不到編譯器 {compiler}。請先安裝（Ubuntu: sudo apt install build-essential）。"
+                    Message = OperatingSystem.IsWindows()
+                        ? $"找不到編譯器 {compiler}（程式資料夾內應有 {BundledCompilerDir}）。請重新解壓完整的考試程式。"
+                        : $"找不到編譯器 {compiler}。請先安裝（Ubuntu: sudo apt install build-essential）。"
                 };
             }
 
@@ -435,6 +443,17 @@ public sealed class CodeRunnerService
 
     internal static bool DefinesMain(string? source) =>
         !string.IsNullOrEmpty(source) && MainCall.IsMatch(CommentsAndLiterals.Replace(source, " "));
+
+    /// <summary>Windows 考試機沒有安裝 gcc，隨程式附上免安裝的 w64devkit（由 release-windows.yml 打包）。</summary>
+    private const string BundledCompilerDir = "w64devkit";
+
+    /// <summary>Windows 優先使用程式資料夾內附的編譯器；其他平台與找不到時沿用 PATH 上的 gcc / g++。</summary>
+    private static string ResolveCompiler(string name)
+    {
+        if (!OperatingSystem.IsWindows()) return name;
+        var bundled = Path.Combine(AppContext.BaseDirectory, BundledCompilerDir, "bin", name + ".exe");
+        return File.Exists(bundled) ? bundled : name;
+    }
 
     private static double CpuTimeMs(Process process)
     {
